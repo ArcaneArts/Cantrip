@@ -29,10 +29,11 @@ export function filterConfiguredModels(
 export function useConfiguredModelSearch(
   models: readonly ModelProfileSummary[],
   query: string,
+  searchText = modelSearchText,
 ) {
   const index = useMemo(
-    () => models.map((model) => ({ model, text: modelSearchText(model) })),
-    [models],
+    () => models.map((model) => ({ model, text: searchText(model) })),
+    [models, searchText],
   );
   return useMemo(() => {
     if (!query) return models;

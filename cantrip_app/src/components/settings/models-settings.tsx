@@ -7,11 +7,11 @@ import { ProviderSetupIcon } from "./provider-setup-icon";
 import { OperationDefaultPicker } from "./operation-default-picker";
 import { useProviderCatalog } from "./use-provider-catalog";
 import {
-  modelOperationLabels,
   operationCapabilityText,
   scopedCapabilitiesByModel,
 } from "./model-operation-metadata";
 import { ProviderInferenceUsage } from "./provider-inference-usage";
+import { SettingsModelGrid } from "./settings-model-grid";
 import type {
   ModelOperation,
   ModelProfileSummary,
@@ -21,20 +21,12 @@ import type {
 } from "@cantrip/protocol";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import {
-  Check,
-  Cpu,
-  Pencil,
-  Plus,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { Pencil, Plus, SlidersHorizontal } from "lucide-react";
 import {
   useEffect,
   useId,
   useMemo,
   useRef,
-  useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -49,18 +41,10 @@ import {
   modelConfigurationSettingsUpdate,
   standaloneChatModelConfigurationSettingsUpdate,
 } from "@/components/chat/model-reasoning-picker";
-import {
-  formatAgentTime,
-  formatConcurrency,
-  formatTokenCount,
-} from "@/components/projects/token-usage-analytics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TooltipButton } from "@/components/ui/tooltip";
-import { Input } from "@/components/ui/input";
-import { ListPageControls } from "@/components/ui/list-page-controls";
 import { ModelCombobox } from "@/components/chat/model-combobox";
-import { useConfiguredModelSearch } from "@/components/chat/model-search";
 import {
   StyledContextMenuContent,
   StyledContextMenuItem,
@@ -77,7 +61,6 @@ import {
 } from "./models-settings-state";
 import {
   availableCatalogModelIds,
-  providerRouteLabel,
   providerSupportsCatalog,
 } from "./provider-catalog-display";
 import {
@@ -86,196 +69,6 @@ import {
   providerSetupUnavailableReason,
   type ProviderSetupKind,
 } from "./provider-setup";
-
-function ModelList({
-  label,
-  models,
-  providers,
-  defaultModelId,
-  removing,
-  onEdit,
-  onRemove,
-  onDefault,
-  preferencesPending,
-  details,
-}: {
-  label: string;
-  models: readonly ModelProfileSummary[];
-  providers: readonly ModelProviderSummary[];
-  defaultModelId: string | null;
-  removing: boolean;
-  onEdit(model: ModelProfileSummary): void;
-  onRemove(model: ModelProfileSummary): void;
-  onDefault?(model: ModelProfileSummary): void;
-  preferencesPending?: boolean;
-  details?: ReadonlyMap<string, string>;
-}) {
-  const [query, setQuery] = useState("");
-  const [requestedPage, setPage] = useState(0);
-  const matches = useConfiguredModelSearch(models, query);
-  const pageSize = 50;
-  const page = Math.min(
-    requestedPage,
-    Math.max(0, Math.ceil(matches.length / pageSize) - 1),
-  );
-  const visible = matches.slice(page * pageSize, (page + 1) * pageSize);
-  const list = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (list.current) list.current.scrollTop = 0;
-  }, [query, page]);
-  return (
-    <div>
-      {models.length ? (
-        <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-          <Input
-            type="search"
-            className="h-8 flex-1"
-            aria-label={`Search ${label}`}
-            placeholder={`Search ${label.toLocaleLowerCase()}…`}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(0);
-            }}
-          />
-          {query ? (
-            <span
-              role="status"
-              className="text-xs tabular-nums text-muted-foreground"
-            >
-              {matches.length.toLocaleString()} of{" "}
-              {models.length.toLocaleString()}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_64px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-        <span>Model</span>
-        <span>Routes</span>
-        <span>Configuration</span>
-        <span className="text-right">Actions</span>
-      </div>
-      <div
-        ref={list}
-        className="max-h-[42vh] divide-y overflow-y-auto border-t sm:border-t-0"
-      >
-        {visible.map((model) => (
-          <div
-            key={model.id}
-            data-high-contrast-row
-            role="button"
-            tabIndex={0}
-            aria-label={`Edit ${model.name}`}
-            title={`Edit ${model.name}`}
-            className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_64px]"
-            onClick={() => onEdit(model)}
-            onKeyDown={(event) => {
-              if (
-                event.target !== event.currentTarget ||
-                (event.key !== "Enter" && event.key !== " ")
-              )
-                return;
-              event.preventDefault();
-              onEdit(model);
-            }}
-          >
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-              <Cpu className="size-4 shrink-0 text-muted-foreground" />
-              <p className="min-w-0 truncate text-sm font-medium">
-                {model.name}
-              </p>
-              <span className="text-[10px] tabular-nums text-muted-foreground">
-                {formatTokenCount(model.tokenUsage.totalTokens)} tokens
-              </span>
-              <span className="text-[10px] tabular-nums text-muted-foreground">
-                {formatAgentTime(model.agentTime.agentTimeMs)} AI ·{" "}
-                {formatConcurrency(model.agentTime)}
-              </span>
-              {details?.get(model.id) ? (
-                <span className="basis-full pl-6 text-[11px] text-muted-foreground">
-                  {details.get(model.id)}
-                </span>
-              ) : null}
-              {defaultModelId === model.id ? (
-                <Badge className="sm:hidden" variant="secondary">
-                  Default
-                </Badge>
-              ) : null}
-            </div>
-            <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
-              {model.routes
-                .filter((route) => route.enabled)
-                .map((route) => {
-                  const provider = providers.find(
-                    ({ id }) => id === route.providerId,
-                  );
-                  return provider
-                    ? providerRouteLabel(provider)
-                    : route.providerName;
-                })
-                .join(" → ") || "No enabled routes"}
-              <span className="sm:hidden">{` · ${model.routes.filter((route) => route.enabled).length} enabled`}</span>
-            </p>
-            <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
-              <span>
-                {model.routes.filter((route) => route.enabled).length} enabled
-              </span>
-              {defaultModelId === model.id ? (
-                <Badge variant="secondary">Default</Badge>
-              ) : null}
-            </div>
-            <div
-              className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
-              onClick={(event) => event.stopPropagation()}
-            >
-              {onDefault ? (
-                <Button
-                  type="button"
-                  className="size-7"
-                  size="icon"
-                  variant="ghost"
-                  title={`Use as default ${modelProfileOperation(model)} model`}
-                  aria-label={`Use ${model.name} as default ${modelProfileOperation(model)} model`}
-                  disabled={
-                    preferencesPending ||
-                    defaultModelId === model.id ||
-                    (modelProfileOperation(model) === "language" &&
-                      !isLanguageModelProfile(model))
-                  }
-                  onClick={() => onDefault(model)}
-                >
-                  <Check className="size-3.5" />
-                </Button>
-              ) : null}
-              <Button
-                className="size-7"
-                size="icon"
-                variant="ghost"
-                disabled={removing}
-                onClick={() => onRemove(model)}
-              >
-                <Trash2 className="size-3.5" />
-                <span className="sr-only">Delete {model.name}</span>
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {query && !matches.length ? (
-        <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-          No models match this search.
-        </p>
-      ) : null}
-      <ListPageControls
-        count={matches.length}
-        page={page}
-        pageSize={pageSize}
-        label={label.toLocaleLowerCase()}
-        onPageChange={setPage}
-      />
-    </div>
-  );
-}
 
 export function ModelsSettings({
   activeTab,
@@ -348,16 +141,6 @@ export function ModelsSettings({
         : unassignedModels(models, providers),
     [models, provider, providers],
   );
-  const modelGroups = useMemo(() => {
-    const groups: Record<ModelOperation, ModelProfileSummary[]> = {
-      language: [],
-      embedding: [],
-      decision: [],
-    };
-    for (const model of visibleModels)
-      groups[modelProfileOperation(model)].push(model);
-    return groups;
-  }, [visibleModels]);
   const modelDetails = useMemo(() => {
     const details = new Map<string, string>();
     for (const model of visibleModels) {
@@ -367,7 +150,7 @@ export function ModelsSettings({
       )
         details.set(
           model.id,
-          "Configured for language, but routes advertise only embeddings or decisions. Edit the routes or add a profile in the matching section. Saved selections are retained.",
+          "Configured for language, but routes advertise only embeddings or decisions. Edit the routes or add a profile for the matching operation. Saved selections are retained.",
         );
     }
     if (provider) {
@@ -384,10 +167,9 @@ export function ModelsSettings({
         const entry = route ? entries.get(route.modelName) : undefined;
         const capability = entry ? (capabilitiesById.get(entry.id) ?? {}) : {};
         const operation = modelProfileOperation(model);
-        const notes = [
-          ...(details.has(model.id) ? [details.get(model.id)!] : []),
-          operationCapabilityText(operation, capability),
-        ];
+        const notes = details.has(model.id) ? [details.get(model.id)!] : [];
+        if (capability[operation])
+          notes.push(operationCapabilityText(operation, capability));
         if (operation === "embedding" && route?.operationOptions?.dimensions)
           notes.push(
             `${route.operationOptions.dimensions.toLocaleString()} configured dimensions`,
@@ -560,15 +342,8 @@ export function ModelsSettings({
         {provider ? (
           <section
             aria-label={`${provider.name} status`}
-            className="min-w-0 border-y"
+            className="min-w-0 space-y-4 border-b pb-4"
           >
-            <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_96px] gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-              <span>Provider</span>
-              <span>Connection</span>
-              <span>Catalog</span>
-              <span>Scope</span>
-              <span className="text-right">Actions</span>
-            </div>
             {renderProviderOverview(provider)}
             <ProviderInferenceUsage providerId={provider.id} />
           </section>
@@ -782,77 +557,36 @@ export function ModelsSettings({
             {providerError}
           </p>
         ) : null}
-        {(["language", "embedding", "decision"] as const).map((operation) => {
-          const operationModels = modelGroups[operation];
-          if (!provider && !operationModels.length) return null;
-          const unsupported = support?.[operation] === "unsupported";
-          const defaultId =
-            operation === "language"
-              ? preferences.defaultModelId
-              : operation === "embedding"
-                ? preferences.defaultEmbeddingModelId
-                : preferences.defaultDecisionModelId;
-          return (
-            <section
-              key={operation}
-              aria-label={`${provider?.name ?? "Unassigned"} ${operation} models`}
-            >
-              <div className="flex items-center justify-between gap-3 px-3 py-3">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <Cpu className="size-4 shrink-0 text-muted-foreground" />
-                  <h2 className="text-sm font-semibold">
-                    {provider ? "" : "Unassigned "}
-                    {modelOperationLabels[operation]} models
-                  </h2>
-                  <span className="text-xs text-muted-foreground">
-                    {operationModels.length}
-                  </span>
-                </div>
-                <Button
-                  className="size-8"
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  disabled={!providers.length || unsupported}
-                  onClick={() => onAddModel(provider?.id, operation)}
-                  aria-label={`Add ${operation} model`}
-                  title={`Add ${operation} model`}
-                >
-                  <Plus className="size-3.5" />
-                </Button>
-              </div>
-              <ModelList
-                key={`${selectedTab}:${operation}`}
-                label={`${modelOperationLabels[operation]} models`}
-                models={operationModels}
-                providers={providers}
-                defaultModelId={defaultId ?? null}
-                removing={removingModel}
-                preferencesPending={preferencesPending}
-                details={modelDetails}
-                onEdit={onEditModel}
-                onRemove={onRemoveModel}
-                onDefault={
-                  operation === "language"
-                    ? undefined
-                    : (model) =>
-                        void onPreferencesChange(
-                          operation === "embedding"
-                            ? { defaultEmbeddingModelId: model.id }
-                            : { defaultDecisionModelId: model.id },
-                        ).catch(() => undefined)
-                }
-              />
-              {!operationModels.length ? (
-                <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  {unsupported
-                    ? `This connection does not expose ${operation} inference.`
-                    : `No ${operation} models configured. ${provider && providerSupportsCatalog(provider) ? "Refresh its catalog or add a model by ID." : "Add a model by ID."}`}
-                </p>
-              ) : null}
-            </section>
-          );
-        })}
+        {provider || visibleModels.length ? (
+          <SettingsModelGrid
+            key={selectedTab}
+            title={provider ? "Models" : "Unassigned models"}
+            models={visibleModels}
+            providers={providers}
+            preferences={preferences}
+            unavailableOperations={(
+              ["language", "embedding", "decision"] as const
+            ).filter((operation) => support?.[operation] === "unsupported")}
+            emptyMessage={
+              provider && providerSupportsCatalog(provider)
+                ? "No models configured. Refresh the catalog or add a model by ID."
+                : "No models configured. Add a model by ID."
+            }
+            details={modelDetails}
+            removing={removingModel}
+            preferencesPending={preferencesPending}
+            onAdd={(operation) => onAddModel(provider?.id, operation)}
+            onEdit={onEditModel}
+            onRemove={onRemoveModel}
+            onDefault={(model, operation) =>
+              void onPreferencesChange(
+                operation === "embedding"
+                  ? { defaultEmbeddingModelId: model.id }
+                  : { defaultDecisionModelId: model.id },
+              ).catch(() => undefined)
+            }
+          />
+        ) : null}
         {modelError || (preferencesError && provider) ? (
           <p role="alert" className="px-3 py-3 text-sm text-destructive">
             {modelError ?? preferencesError}

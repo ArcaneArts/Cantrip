@@ -291,7 +291,7 @@ describe("Models provider navigation", () => {
     const general = renderToStaticMarkup(<ModelsSettings {...props()} />);
     expect(general).toContain("Default model configuration");
     expect(general).toContain("Standalone Chat defaults");
-    expect(general).toContain('aria-label="Unassigned language models"');
+    expect(general).toContain("Unassigned models");
     expect(general).not.toContain('aria-label="Edit local-only"');
     const selected = renderToStaticMarkup(
       <ModelsSettings {...props({ activeTab: providerModelsTab("local") })} />,
@@ -314,10 +314,46 @@ describe("Models provider navigation", () => {
         {...props({ activeTab: "provider:local", models: [] })}
       />,
     );
-    for (const operation of ["language", "embedding", "decision"]) {
-      expect(empty).toContain(`aria-label="Ollama ${operation} models"`);
-      expect(empty).toContain(`No ${operation} models configured.`);
-    }
+    expect(empty).toContain(
+      "No models configured. Refresh the catalog or add a model by ID.",
+    );
+  });
+
+  it("searches language, embedding and decision models in a single provider grid", async () => {
+    const mixed = [
+      model("Composer", [["local", true]]),
+      {
+        ...model("Vector", [["local", true]]),
+        operation: "embedding" as const,
+      },
+      {
+        ...model("Resolver", [["local", true]]),
+        operation: "decision" as const,
+      },
+    ];
+    const inputs = props({ activeTab: "provider:local", models: mixed });
+    let view!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      view = createView(<ModelsSettings {...inputs} />);
+    });
+    const cards = () =>
+      view.root
+        .findAllByType("article")
+        .map(
+          (card) =>
+            card.findByType("h3").findByType("button").props["aria-label"],
+        );
+    expect(cards()).toEqual(["Edit Composer", "Edit Vector", "Edit Resolver"]);
+    const search = view.root.findByType("input");
+    await act(async () =>
+      search.props.onChange({ target: { value: "embedding" } }),
+    );
+    expect(cards()).toEqual(["Edit Vector"]);
+    await act(async () =>
+      search.props.onChange({ target: { value: "Resolver" } }),
+    );
+    expect(cards()).toEqual(["Edit Resolver"]);
+    await act(async () => view.unmount());
   });
 
   it("preserves provider identity through rename and recovers after removal", async () => {
@@ -408,7 +444,10 @@ describe("Models provider navigation", () => {
     for (const operation of ["language", "embedding", "decision"]) {
       await act(async () =>
         view.root
-          .findByProps({ "aria-label": `Add ${operation} model` })
+          .findAllByType("button")
+          .find(
+            (button) => button.props["aria-label"] === `Add ${operation} model`,
+          )!
           .props.onClick(),
       );
       expect(inputs.onAddModel).toHaveBeenLastCalledWith("local", operation);
