@@ -16,6 +16,29 @@ pub(super) struct ClaudeRouting {
     server: String,
 }
 
+#[derive(Debug)]
+pub(super) struct NoClaudeAccount;
+
+impl NoClaudeAccount {
+    pub(super) fn configuration_failure() -> anyhow::Error {
+        anyhow::Error::new(ConfigurationFailure(json!({
+            "code":"root-model-unavailable",
+            "error":Self.to_string(),
+            "field":"modelId","retryable":true,
+        })))
+        .context(Self)
+    }
+}
+
+impl std::fmt::Display for NoClaudeAccount {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(
+            "No signed-in Claude Code account on this worker has remaining usage for this model.",
+        )
+    }
+}
+impl std::error::Error for NoClaudeAccount {}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Availability {
     Available,
@@ -175,14 +198,9 @@ impl ModelRouting {
             }
             retained.push(pair);
         }
-        anyhow::ensure!(
-            !retained.is_empty(),
-            ConfigurationFailure(json!({
-                "code":"root-model-unavailable",
-                "error":"No signed-in Claude Code account on this worker has remaining usage for this model.",
-                "field":"modelId","retryable":true,
-            }))
-        );
+        if retained.is_empty() {
+            return Err(NoClaudeAccount::configuration_failure());
+        }
         Ok(retained)
     }
 }
@@ -190,6 +208,15 @@ impl ModelRouting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unavailable_account_retains_the_public_model_failure_type() {
+        let cause = NoClaudeAccount::configuration_failure();
+        assert!(cause.is::<NoClaudeAccount>());
+        let configuration = cause.downcast_ref::<ConfigurationFailure>().unwrap();
+        assert_eq!(configuration.0["error"], NoClaudeAccount.to_string());
+        assert_eq!(configuration.0["retryable"], true);
+    }
 
     #[test]
     fn worker_observations_distinguish_unknown_usage_from_exhausted_accounts() {

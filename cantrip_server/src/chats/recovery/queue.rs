@@ -1,10 +1,12 @@
 use super::*;
 use crate::{
     chats::{
+        claude_routing::NoClaudeAccount,
         live_mutations::MessageOptions,
         managed_console::{permission_profile, turn_session_context as session_context},
         message_queries::MessageKind,
     },
+    operations::shared_failure::downcast_ref,
     workers::command_bus::{CommandFailure, RequestTimeout},
 };
 impl Service {
@@ -42,8 +44,32 @@ impl Service {
                 let id = text(&claim["id"])?;
                 if retryable {
                     self.queue.defer_unadmitted(owner, chat, &id).await?;
-                } else {
-                    self.queue.release_unadmitted(owner, chat, &id).await?;
+                } else if self.queue.release_unadmitted(owner, chat, &id).await?
+                    && let Some(unavailable) = downcast_ref::<NoClaudeAccount>(&error)
+                {
+                    let key = format!(
+                        "claude-routing:{}:{}",
+                        text(&claim["promptId"])?,
+                        claim["promptRevision"].stringify()
+                    );
+                    if let Err(cause) = self
+                        .system_message(
+                            owner,
+                            chat,
+                            json!(unavailable.to_string()),
+                            json!(key),
+                            None,
+                        )
+                        .await
+                    {
+                        self.log(
+                            "warn",
+                            "Could not publish the Claude account notice",
+                            json!({
+                                "chatId":chat,"err":logging::error_details(&cause),
+                            }),
+                        );
+                    }
                 }
             }
             if retryable {
@@ -104,7 +130,8 @@ impl Service {
             {
                 Ok(prepared) => context = prepared,
                 Err(error) => {
-                    if error.is::<crate::settings::reasoning::ConfigurationFailure>()
+                    if downcast_ref::<crate::settings::reasoning::ConfigurationFailure>(&error)
+                        .is_some()
                         && let Some(rejected) = self.queue.claim_next(owner, chat).await?
                     {
                         if rejected["promptId"] == prompt["id"]
