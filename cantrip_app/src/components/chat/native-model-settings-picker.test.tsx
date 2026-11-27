@@ -13,10 +13,11 @@ const runtime = vi.hoisted(() => ({
   send: vi.fn(),
   sendPermission: vi.fn(),
   matches: vi.fn(() => true),
+  handoffInventory: null as unknown,
 }));
 vi.mock("./use-runtime-handoff", () => ({
   useRuntimeHandoff: () => ({
-    query: { data: null },
+    query: { data: runtime.handoffInventory },
     latest: null,
     active: false,
     busy: false,
@@ -25,7 +26,11 @@ vi.mock("./use-runtime-handoff", () => ({
   }),
 }));
 vi.mock("./native-runtime-handoff-editor", () => ({
-  NativeRuntimeHandoffEditor: () => null,
+  NativeRuntimeHandoffEditor: ({
+    destinationRoute,
+  }: {
+    destinationRoute: { id: string };
+  }) => createElement("div", { "data-transfer-route": destinationRoute.id }),
 }));
 vi.mock("./use-native-settings-state", () => ({
   useNativeSettingsState: () => runtime.observed,
@@ -195,6 +200,7 @@ beforeEach(() => {
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   runtime.observed = observed();
+  runtime.handoffInventory = null;
   runtime.matches.mockReset().mockReturnValue(true);
   runtime.read.mockReset().mockResolvedValue(inventory);
   runtime.prepare
@@ -221,6 +227,54 @@ afterEach(async () => {
   await act(async () => cleanups.splice(0).forEach((cleanup) => cleanup()));
 });
 describe("bound GUI native model picker", () => {
+  it("selects a Claude model as a transfer instead of patching the existing provider", async () => {
+    runtime.handoffInventory = {
+      binding,
+      providers: [
+        {
+          id: "claude",
+          name: "Claude Code",
+          requiresAccount: true,
+          accounts: [{ id: "claude-local" }],
+          models: [
+            { routeId: "claude-sonnet", name: "sonnet", profileName: "Sonnet" },
+          ],
+        },
+        {
+          id: "other-claude",
+          name: "Unavailable provider",
+          requiresAccount: true,
+          accounts: [],
+          models: [
+            {
+              routeId: "other-claude-route",
+              name: "opus",
+              profileName: "Opus",
+            },
+          ],
+        },
+      ],
+    };
+    const mounted = await mount();
+    await mounted.open();
+    const select = mounted.view.root.findByProps({
+      "aria-label": "Session model",
+    });
+    expect(
+      select.findAllByType("option").map((option) => option.props.value),
+    ).toContain("claude-sonnet");
+    expect(
+      select.findAllByType("option").map((option) => option.props.value),
+    ).not.toContain("other-claude-route");
+    await act(async () =>
+      select.props.onChange({ target: { value: "claude-sonnet" } }),
+    );
+    expect(
+      mounted.view.root.findByProps({ "data-transfer-route": "claude-sonnet" }),
+    ).toBeDefined();
+    expect(runtime.send).not.toHaveBeenCalled();
+  });
+
   it("keeps an acknowledged permission choice when selected again", async () => {
     const mounted = await mount();
     await act(async () => {

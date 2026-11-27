@@ -262,6 +262,57 @@ describe("context usage ring", () => {
     expect(markup).not.toContain("Current account");
   });
 
+  it("shows the bound Claude account on the chat worker", () => {
+    const { models, providers } = settings();
+    const binding = (workerId: string) => ({
+      workerId,
+      authState: "signed-in" as const,
+      lastSyncedAt: timestamp,
+      weeklyUsageUsedPercent: null,
+      weeklyUsageResetsAt: null,
+    });
+    const claude: ModelProviderSummary = {
+      ...providers[0]!,
+      id: "claude",
+      name: "Claude",
+      kind: "claude-code",
+      accounts: [
+        account("remote", null, {
+          boundWorkerId: "remote-worker",
+          workerBindings: [binding("remote-worker")],
+          credentialState: "signed-out",
+          providerId: "claude",
+        }),
+        account("local", null, {
+          boundWorkerId: "local-worker",
+          workerBindings: [binding("local-worker")],
+          credentialState: "signed-out",
+          providerId: "claude",
+          position: 1,
+        }),
+      ],
+    };
+    const model = {
+      ...models[0]!,
+      routes: [{ ...models[0]!.routes[0]!, providerId: claude.id }],
+    };
+    expect(selectedQuotaProvider(model, [claude])).toBe(claude);
+    expect(selectedQuotaAccount(claude, null, "local-worker")?.id).toBe(
+      "local",
+    );
+    expect(selectedQuotaAccount(claude, "remote", "local-worker")).toBeNull();
+    expect(
+      renderToStaticMarkup(
+        <ContextUsageRing
+          messages={[]}
+          model={model}
+          workerId="local-worker"
+          providers={[claude]}
+        />,
+      ),
+    ).toContain("Claude Code quota, current account local");
+  });
+
   it("uses the runtime route instead of assuming the first model route", () => {
     const bundle = settings();
     const grok = {

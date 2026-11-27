@@ -33,14 +33,24 @@ impl Repository {
             {
                 continue;
             }
-            let requires = matches!(row["kind"].as_str(), Some("chatgpt" | "grok"));
+            let claude = row["kind"] == "claude-code";
+            let requires = claude || matches!(row["kind"].as_str(), Some("chatgpt" | "grok"));
             let available = if requires {
                 accounts
                     .list_provider_accounts(owner, &text(&row["providerId"])?)
                     .await?
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|a| a["enabled"] == true)
+                    .filter(|a| {
+                        a["enabled"] == true
+                            && (!claude
+                                || a["boundWorkerId"].as_str().is_some_and(|worker| {
+                                    state
+                                        .as_ref()
+                                        .and_then(|s| s["binding"]["workerId"].as_str())
+                                        == Some(worker)
+                                }))
+                    })
                     .map(|v| Value::from_serialize(&v))
                     .collect::<Vec<_>>()
             } else {

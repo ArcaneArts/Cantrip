@@ -55,6 +55,7 @@ pub(super) async fn apply(
     let target = guards::target(
         tx,
         owner,
+        worker,
         &row["target_model_route_id"],
         &row["target_provider_account_id"],
     )

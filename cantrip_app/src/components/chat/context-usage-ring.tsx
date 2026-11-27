@@ -25,6 +25,8 @@ import {
   providerWeeklyRemainingPercent,
   providerCreditsText,
 } from "@/components/settings/provider-usage-display";
+import { ClaudeAccountUsage } from "@/components/settings/claude-account-usage";
+import { ProviderUsageBar } from "@/components/settings/provider-usage-bar";
 import { cn } from "@/lib/utils";
 
 export interface ContextUsageSummary {
@@ -106,21 +108,35 @@ export function selectedQuotaProvider(
     );
   if (!selectedRoute) return null;
   const provider = providers.find(({ id }) => id === selectedRoute.providerId);
-  return provider?.kind === "chatgpt" || provider?.kind === "grok"
+  return provider?.kind === "chatgpt" ||
+    provider?.kind === "grok" ||
+    provider?.kind === "claude-code"
     ? provider
     : null;
 }
 
 export function quotaProviderLabel(provider: ModelProviderSummary): string {
+  if (provider.kind === "claude-code") return "Claude Code";
   return provider.kind === "grok" ? "SuperGrok" : "ChatGPT";
 }
 
 export function signedInQuotaAccounts(
   provider: ModelProviderSummary,
+  workerId: string | null = null,
 ): ModelProviderAccountSummary[] {
   return provider.accounts
     .filter(
-      (account) => account.enabled && account.credentialState === "signed-in",
+      (account) =>
+        account.enabled &&
+        (provider.kind === "claude-code"
+          ? Boolean(account.boundWorkerId) &&
+            (!workerId || account.boundWorkerId === workerId) &&
+            account.workerBindings.some(
+              (binding) =>
+                binding.workerId === account.boundWorkerId &&
+                binding.authState === "signed-in",
+            )
+          : account.credentialState === "signed-in"),
     )
     .sort((left, right) => left.position - right.position);
 }
@@ -128,8 +144,21 @@ export function signedInQuotaAccounts(
 export function selectedQuotaAccount(
   provider: ModelProviderSummary,
   providerAccountId: string | null,
+  workerId: string | null = null,
 ): ModelProviderAccountSummary | null {
-  const accounts = signedInQuotaAccounts(provider);
+  if (provider.kind === "claude-code" && providerAccountId) {
+    return (
+      provider.accounts.find(
+        (account) =>
+          account.id === providerAccountId &&
+          account.enabled &&
+          account.boundWorkerId &&
+          (!workerId || account.boundWorkerId === workerId),
+      ) ?? null
+    );
+  }
+  const accounts = signedInQuotaAccounts(provider, workerId);
+  if (provider.kind === "claude-code" && workerId) return accounts[0] ?? null;
   if (!providerAccountId) return accounts.length === 1 ? accounts[0]! : null;
   return accounts.find(({ id }) => id === providerAccountId) ?? null;
 }
@@ -143,13 +172,6 @@ export function formatQuotaReset(value: string | null): string {
 
 function formattedPercent(value: number) {
   return percentageFormat.format(value);
-}
-
-function availabilityTone(remainingPercent: number | null) {
-  if (remainingPercent === null) return "bg-muted-foreground/35";
-  if (remainingPercent <= 10) return "bg-destructive";
-  if (remainingPercent <= 25) return "bg-amber-500";
-  return "bg-emerald-500";
 }
 
 function contextRingTone(remainingPercent: number | null) {
@@ -219,9 +241,11 @@ function QuotaSummary({
       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {quotaProviderLabel(provider)} quota
       </p>
-      <p className="text-xs leading-5">
-        {quotaAvailabilityText(provider, availableResetCredits)}
-      </p>
+      {provider.kind !== "claude-code" ? (
+        <p className="text-xs leading-5">
+          {quotaAvailabilityText(provider, availableResetCredits)}
+        </p>
+      ) : null}
       {selectedAccount ? (
         <div className="flex min-w-0 items-baseline justify-between gap-3 pt-1 text-xs">
           <span className="shrink-0 text-muted-foreground">
@@ -236,6 +260,35 @@ function QuotaSummary({
         <p className="pt-1 text-xs font-medium tabular-nums">
           {providerCreditsText(selectedAccount.credits)}
         </p>
+      ) : null}
+      {provider.kind === "claude-code" ? (
+        selectedAccount ? (
+          <div className="pt-1.5">
+            <ClaudeAccountUsage
+              providerId={provider.id}
+              accountId={selectedAccount.id}
+              showPlan={false}
+            />
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            No Claude Code account selected.
+          </p>
+        )
+      ) : selectedAccount ? (
+        <div className="pt-1.5">
+          <ProviderUsageBar
+            label="7-day quota"
+            remainingPercent={
+              selectedAccount.weeklyUsageUsedPercent === null
+                ? null
+                : providerWeeklyRemainingPercent(
+                    selectedAccount.weeklyUsageUsedPercent,
+                  )
+            }
+            resetText={formatQuotaReset(selectedAccount.weeklyUsageResetsAt)}
+          />
+        </div>
       ) : null}
     </div>
   );
@@ -254,45 +307,17 @@ function AccountQuotaRow({
       : providerWeeklyRemainingPercent(account.weeklyUsageUsedPercent);
   return (
     <div className="grid gap-2 rounded-lg border bg-muted/20 p-3">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{account.label}</p>
-          {showCredits ? (
-            <p className="text-xs tabular-nums text-muted-foreground">
-              {providerCreditsText(account.credits)}
-            </p>
-          ) : null}
-        </div>
-        <span className="shrink-0 text-xs font-medium tabular-nums">
-          {remainingPercent === null
-            ? "Unavailable"
-            : `${formattedPercent(remainingPercent)}% left`}
-        </span>
-      </div>
-      <div
-        role="progressbar"
-        aria-label={`${account.label} 7-day quota remaining`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={remainingPercent ?? undefined}
-        aria-valuetext={
-          remainingPercent === null
-            ? "Unavailable"
-            : `${formattedPercent(remainingPercent)}% remaining`
-        }
-        className="h-1.5 overflow-hidden rounded-full bg-muted"
-      >
-        <div
-          className={cn(
-            "h-full rounded-full transition-[width]",
-            availabilityTone(remainingPercent),
-          )}
-          style={{ width: `${remainingPercent ?? 0}%` }}
-        />
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        {formatQuotaReset(account.weeklyUsageResetsAt)}
-      </p>
+      <p className="truncate text-sm font-medium">{account.label}</p>
+      {showCredits ? (
+        <p className="text-xs tabular-nums text-muted-foreground">
+          {providerCreditsText(account.credits)}
+        </p>
+      ) : null}
+      <ProviderUsageBar
+        label="7-day quota"
+        remainingPercent={remainingPercent}
+        resetText={formatQuotaReset(account.weeklyUsageResetsAt)}
+      />
     </div>
   );
 }
@@ -302,13 +327,25 @@ function QuotaDialog({
   onOpenChange,
   open,
   provider,
+  workerId,
+  selectedAccount,
 }: {
   availableResetCredits?: ReadonlyMap<string, number>;
   onOpenChange(open: boolean): void;
   open: boolean;
   provider: ModelProviderSummary;
+  workerId: string | null;
+  selectedAccount: ModelProviderAccountSummary | null;
 }) {
-  const accounts = signedInQuotaAccounts(provider);
+  const accounts = signedInQuotaAccounts(provider, workerId);
+  const claude = provider.kind === "claude-code";
+  if (
+    claude &&
+    selectedAccount &&
+    !accounts.some(({ id }) => id === selectedAccount.id)
+  ) {
+    accounts.unshift(selectedAccount);
+  }
   const availability = providerWeeklyAvailability(
     provider.accounts,
     provider.kind === "chatgpt" ? availableResetCredits : undefined,
@@ -317,36 +354,56 @@ function QuotaDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{quotaProviderLabel(provider)} 7-day usage</DialogTitle>
+          <DialogTitle>
+            {quotaProviderLabel(provider)}{" "}
+            {claude ? "subscription usage" : "7-day usage"}
+          </DialogTitle>
           <DialogDescription>
             Quota available to the selected model through {provider.name}.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
-          <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2.5">
-            <div>
-              <p className="text-sm font-medium">Total available</p>
-              <p className="text-xs text-muted-foreground">
+          {!claude ? (
+            <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Total available</p>
+                <p className="text-xs text-muted-foreground">
+                  {availability
+                    ? `${availability.reportedAccountCount} of ${availability.signedInAccountCount} signed-in ${availability.signedInAccountCount === 1 ? "account" : "accounts"} reporting${availability.bankedResetCount ? ` · Includes ${availability.bankedResetCount} banked ${availability.bankedResetCount === 1 ? "reset" : "resets"}` : ""}`
+                    : `${accounts.length} signed-in ${accounts.length === 1 ? "account" : "accounts"}`}
+                </p>
+              </div>
+              <span className="text-xl font-semibold tabular-nums">
                 {availability
-                  ? `${availability.reportedAccountCount} of ${availability.signedInAccountCount} signed-in ${availability.signedInAccountCount === 1 ? "account" : "accounts"} reporting${availability.bankedResetCount ? ` · Includes ${availability.bankedResetCount} banked ${availability.bankedResetCount === 1 ? "reset" : "resets"}` : ""}`
-                  : `${accounts.length} signed-in ${accounts.length === 1 ? "account" : "accounts"}`}
-              </p>
+                  ? `${Math.round(availability.availablePercent)}%`
+                  : "—"}
+              </span>
             </div>
-            <span className="text-xl font-semibold tabular-nums">
-              {availability
-                ? `${Math.round(availability.availablePercent)}%`
-                : "—"}
-            </span>
-          </div>
+          ) : null}
           {accounts.length ? (
             <div className="grid gap-2">
-              {accounts.map((account) => (
-                <AccountQuotaRow
-                  key={account.id}
-                  account={account}
-                  showCredits={provider.kind === "chatgpt"}
-                />
-              ))}
+              {accounts.map((account) =>
+                claude ? (
+                  <div
+                    key={account.id}
+                    className="grid gap-2 rounded-lg border bg-muted/20 p-3"
+                  >
+                    <p className="truncate text-sm font-medium">
+                      {account.label}
+                    </p>
+                    <ClaudeAccountUsage
+                      providerId={provider.id}
+                      accountId={account.id}
+                    />
+                  </div>
+                ) : (
+                  <AccountQuotaRow
+                    key={account.id}
+                    account={account}
+                    showCredits={provider.kind === "chatgpt"}
+                  />
+                ),
+              )}
             </div>
           ) : (
             <p className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
@@ -367,6 +424,7 @@ export function ContextUsageRing({
   modelRouteId = null,
   providerAccountId = null,
   providers,
+  workerId = null,
 }: {
   availableResetCredits?: ReadonlyMap<string, number>;
   messages: readonly ChatMessage[];
@@ -374,6 +432,7 @@ export function ContextUsageRing({
   modelRouteId?: string | null;
   providerAccountId?: string | null;
   providers: readonly ModelProviderSummary[];
+  workerId?: string | null;
 }) {
   const usage = useMemo(() => latestContextUsage(messages), [messages]);
   const quotaProvider = useMemo(
@@ -383,9 +442,9 @@ export function ContextUsageRing({
   const quotaAccount = useMemo(
     () =>
       quotaProvider
-        ? selectedQuotaAccount(quotaProvider, providerAccountId)
+        ? selectedQuotaAccount(quotaProvider, providerAccountId, workerId)
         : null,
-    [providerAccountId, quotaProvider],
+    [providerAccountId, quotaProvider, workerId],
   );
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false);
@@ -416,7 +475,9 @@ export function ContextUsageRing({
     ? `${formattedPercent(usage.remainingPercent)}% context left, ${numberFormat.format(usage.usedTokens)} of ${numberFormat.format(usage.contextWindowTokens)} tokens used`
     : "Context usage unavailable";
   const quotaLabel = quotaProvider
-    ? `, ${quotaAvailabilityText(quotaProvider, availableResetCredits)}`
+    ? quotaProvider.kind === "claude-code"
+      ? ", Claude Code quota"
+      : `, ${quotaAvailabilityText(quotaProvider, availableResetCredits)}`
     : "";
   const accountLabel = quotaAccount
     ? `, current account ${quotaAccount.label}${quotaProvider?.kind === "chatgpt" ? `, ${providerCreditsText(quotaAccount.credits)}` : ""}`
@@ -549,6 +610,8 @@ export function ContextUsageRing({
           availableResetCredits={availableResetCredits}
           open={quotaDialogOpen}
           provider={quotaProvider}
+          selectedAccount={quotaAccount}
+          workerId={workerId}
           onOpenChange={setQuotaDialogOpen}
         />
       ) : null}

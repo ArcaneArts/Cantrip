@@ -233,6 +233,13 @@ export function ChatTranscriptView({
     viewTurnTrajectory,
     viewingAttachment,
   } = controller;
+  const usageRouteId =
+    nativeModelSettings.binding?.modelRouteId ??
+    runtimeSelection.data?.modelRouteId;
+  const usageModel =
+    settings?.models.find((model) =>
+      model.routes.some((route) => route.id === usageRouteId),
+    ) ?? selectedModel;
   const suspensionView = nativeSuspensionView(
     chat.nativeSuspension,
     setAutomationPaused.isPending ? setAutomationPaused.variables : undefined,
@@ -1188,10 +1195,17 @@ export function ChatTranscriptView({
                 <ContextUsageRing
                   availableResetCredits={chatGptAvailableResetCredits}
                   messages={messages.data ?? []}
-                  model={selectedModel}
-                  modelRouteId={runtimeSelection.data?.modelRouteId}
-                  providerAccountId={runtimeSelection.data?.providerAccountId}
+                  model={usageModel}
+                  modelRouteId={usageRouteId}
+                  providerAccountId={
+                    nativeModelSettings.binding
+                      ? nativeModelSettings.binding.providerAccountId
+                      : runtimeSelection.data?.providerAccountId
+                  }
                   providers={settings?.providers ?? []}
+                  workerId={
+                    nativeModelSettings.binding?.workerId ?? chat.activeWorkerId
+                  }
                 />
               </div>
             </div>

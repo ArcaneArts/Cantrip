@@ -24,8 +24,9 @@ impl SettingsRepository {
             return Ok(None);
         };
         let provider = Value::from_serialize(&provider);
-        let account = eligibility::account_provider(&provider["kind"]);
-        if provider["kind"] == "claude-code" {
+        let claude = provider["kind"] == "claude-code";
+        let account = claude || eligibility::account_provider(&provider["kind"]);
+        if claude {
             let Some(account_id) = request["providerAccountId"].as_str() else {
                 return Ok(None);
             };

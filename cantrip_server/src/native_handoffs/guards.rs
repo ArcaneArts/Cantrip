@@ -77,6 +77,7 @@ pub(super) async fn assert_idle(tx: &Transaction<'_>, chat: &str, queued: &Value
 pub(super) async fn target(
     tx: &Transaction<'_>,
     owner: &str,
+    worker: &str,
     route: &Value,
     account: &Value,
 ) -> Result<Value> {
@@ -85,12 +86,13 @@ pub(super) async fn target(
     let Some(found) = found else {
         return reject("handoff-target-not-found");
     };
+    let claude = found["kind"] == "claude-code";
     if truthy(Some(account)) {
-        let rows=tx.query("SELECT id FROM model_provider_accounts WHERE id=$1 AND provider_id=$2 AND enabled=true",&[&text(account)?,&text(&found["providerId"])?]).await?;
+        let rows=tx.query("SELECT id FROM model_provider_accounts WHERE id=$1 AND provider_id=$2 AND enabled=true AND (NOT $3 OR bound_worker_id=$4)",&[&text(account)?,&text(&found["providerId"])?,&claude,&worker]).await?;
         if rows.is_empty() {
             return reject("handoff-target-account-mismatch");
         }
-    } else if matches!(found["kind"].as_str(), Some("chatgpt" | "grok")) {
+    } else if claude || matches!(found["kind"].as_str(), Some("chatgpt" | "grok")) {
         return reject("handoff-target-account-required");
     }
     Ok(found)

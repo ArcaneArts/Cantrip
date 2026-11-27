@@ -3,8 +3,10 @@ mod support;
 use anyhow::Result;
 use cantrip_server::{
     auth::{crypto, repository::AuthRepository},
+    chats::{managed_console::ManagedConsole, routing::ModelRouting},
     database::Database,
     migrations::migrate,
+    native_handoffs::Repository as Handoffs,
     relay::RelayQuotas,
     settings::{
         catalog_runtime::{CatalogRequest, CatalogRuntime},
@@ -76,7 +78,10 @@ async fn claude_profiles_are_bound_to_one_owned_worker_and_store_only_status() -
         .await?
         .id;
     let workers = WorkerRepository::new(database.clone());
-    let fixtures = support::security_fixtures(&["workerHeartbeatSchema"])?;
+    let fixtures = support::security_fixtures(&[
+        "workerHeartbeatSchema",
+        "encryptedModelProviderAccountCreateSchema",
+    ])?;
     let mut heartbeat = fixtures["workerHeartbeatSchema"][0].clone();
     heartbeat["workerId"] = json!("fixture-worker");
     workers.record_worker(&owner, &heartbeat).await?;
@@ -97,9 +102,10 @@ async fn claude_profiles_are_bound_to_one_owned_worker_and_store_only_status() -
     );
     let first = uuid::Uuid::new_v4().to_string();
     let second = uuid::Uuid::new_v4().to_string();
+    let label = &fixtures["encryptedModelProviderAccountCreateSchema"][0]["protectedLabel"];
     let make_account = |id: &str, worker: &str| {
         Value::from_serialize(&json!({
-            "id":id, "protectedLabel":{"fixture":"opaque"}, "boundWorkerId":worker
+            "id":id, "protectedLabel":label, "boundWorkerId":worker
         }))
     };
     assert!(
@@ -177,7 +183,11 @@ async fn claude_profiles_are_bound_to_one_owned_worker_and_store_only_status() -
         }),
         Arc::new(|| 0),
     );
-    let catalog = CatalogRuntime::new(repository.clone(), commands, "catalog-fixture".into())?;
+    let catalog = CatalogRuntime::new(
+        repository.clone(),
+        commands.clone(),
+        "catalog-fixture".into(),
+    )?;
     let request = CatalogRequest {
         owner: owner.clone(),
         provider: provider.into(),
@@ -207,6 +217,81 @@ async fn claude_profiles_are_bound_to_one_owned_worker_and_store_only_status() -
     let inventory = catalog.load(request).await?.unwrap();
     assert_eq!(inventory["availability"].as_array().unwrap().len(), 1);
     assert_eq!(inventory["availability"][0]["providerAccountId"], second);
+    heartbeat["workerId"] = json!("alternate-worker");
+    workers.record_worker(&owner, &heartbeat).await?;
+    let remote = uuid::Uuid::new_v4().to_string();
+    repository
+        .create_provider_account(&owner, provider, &make_account(&remote, "alternate-worker"))
+        .await?
+        .unwrap();
+    let state = json!({
+        "chatId":"fixture-chat","revision":"1","desiredRevision":"0","desired":null,
+        "desiredStatus":null,"pending":[],"effective":null,
+        "binding":{"chatId":"fixture-chat","workerId":"fixture-worker","threadId":"thread",
+            "projectId":null,"contextKind":"standalone","placementId":"fixture-root",
+            "modelRouteId":"fixture-source-route","providerAccountId":null,
+            "bindingId":"binding","runtimeGeneration":"runtime","nativeEpoch":"epoch"}
+    })
+    .to_string();
+    let fixture_owner = owner.clone();
+    database.transaction(move |tx| Box::pin(async move {
+        tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url) VALUES('fixture-source-provider',$1,'Source','openai-compatible','https://example.invalid/v1')", &[&fixture_owner]).await?;
+        tx.query("INSERT INTO model_profiles(id,owner_id,name) VALUES('fixture-source-model',$1,'Source model')", &[&fixture_owner]).await?;
+        tx.query("INSERT INTO model_routes(id,model_id,provider_id,model_name) VALUES('fixture-source-route','fixture-source-model','fixture-source-provider','source')", &[]).await?;
+        tx.query("INSERT INTO chats(id,owner_id,context_kind,active_worker_id,active_scratch_root_id,worktree_mode,model_id,protected_label) VALUES('fixture-chat',$1,'standalone','fixture-worker','fixture-root',NULL,'fixture-source-model','{}'::jsonb)", &[&fixture_owner]).await?;
+        tx.query("INSERT INTO standalone_chat_roots(id,chat_id,owner_id,worker_id,protected_path_handle,status) VALUES('fixture-root','fixture-chat',$1,'fixture-worker','ctrr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','ready')", &[&fixture_owner]).await?;
+        tx.query("INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,scratch_root_id,codex_thread_id,model_route_id,status) VALUES('fixture-runtime','fixture-chat','fixture-worker','fixture-root','thread','fixture-source-route','ready')", &[]).await?;
+        tx.query("INSERT INTO native_settings_states(chat_id,state) VALUES('fixture-chat',$1::text::jsonb)", &[&state]).await?;
+        Ok(())
+    })).await?;
+    let handoffs = Handoffs::new(database.clone());
+    let inventory = handoffs.inventory(&owner, "fixture-chat").await?.unwrap();
+    let claude = inventory["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == provider)
+        .unwrap();
+    assert_eq!(claude["requiresAccount"], true);
+    let accounts = claude["accounts"].as_array().unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0]["id"], second);
+    let route = &claude["models"].as_array().unwrap()[0]["routeId"];
+    let begin = |account: Option<&str>| {
+        cantrip_server::wire::value::json!({
+            "operationId":uuid::Uuid::new_v4().to_string(),"bindingId":"binding",
+            "targetModelRouteId":route,"targetProviderAccountId":account
+        })
+    };
+    assert!(
+        handoffs
+            .begin(&owner, "fixture-chat", &begin(None))
+            .await
+            .is_err()
+    );
+    assert!(
+        handoffs
+            .begin(&owner, "fixture-chat", &begin(Some(&remote)))
+            .await
+            .is_err()
+    );
+    let handoff = handoffs
+        .begin(&owner, "fixture-chat", &begin(Some(&second)))
+        .await?;
+    assert_eq!(handoff["targetProviderAccountId"], second);
+    let routing = ModelRouting::with_dependencies(
+        database.clone(),
+        Arc::new(|_| true),
+        Arc::new(|_, _| Box::pin(async { Ok(false) })),
+        Arc::new(|| 0.0),
+    );
+    let console = ManagedConsole::new(database.clone(), routing, commands);
+    let target = handoffs
+        .configuration(&owner, &handoff, "destination", &console)
+        .await?;
+    assert_eq!(target["configuration"]["provider"]["kind"], "claude-code");
+    assert_eq!(target["configuration"]["provider"]["accountId"], second);
+    assert_eq!(&target["configuration"]["model"]["routeId"], route);
     assert!(
         repository
             .claude_account_worker(&owner, provider, &first, true)
@@ -219,7 +304,7 @@ async fn claude_profiles_are_bound_to_one_owned_worker_and_store_only_status() -
             .await?
             .unwrap()
             .len(),
-        1
+        2
     );
     database.close().await?;
     Ok(())
