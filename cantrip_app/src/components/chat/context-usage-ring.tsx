@@ -294,7 +294,7 @@ function QuotaSummary({
   );
 }
 
-function AccountQuotaRow({
+function AccountQuotaDetails({
   account,
   showCredits,
 }: {
@@ -306,8 +306,7 @@ function AccountQuotaRow({
       ? null
       : providerWeeklyRemainingPercent(account.weeklyUsageUsedPercent);
   return (
-    <div className="grid gap-2 rounded-lg border bg-muted/20 p-3">
-      <p className="truncate text-sm font-medium">{account.label}</p>
+    <>
       {showCredits ? (
         <p className="text-xs tabular-nums text-muted-foreground">
           {providerCreditsText(account.credits)}
@@ -318,7 +317,7 @@ function AccountQuotaRow({
         remainingPercent={remainingPercent}
         resetText={formatQuotaReset(account.weeklyUsageResetsAt)}
       />
-    </div>
+    </>
   );
 }
 
@@ -362,9 +361,9 @@ function QuotaDialog({
             Quota available to the selected model through {provider.name}.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {!claude ? (
-            <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium">Total available</p>
                 <p className="text-xs text-muted-foreground">
@@ -373,7 +372,7 @@ function QuotaDialog({
                     : `${accounts.length} signed-in ${accounts.length === 1 ? "account" : "accounts"}`}
                 </p>
               </div>
-              <span className="text-xl font-semibold tabular-nums">
+              <span className="shrink-0 text-xl font-semibold tabular-nums">
                 {availability
                   ? `${Math.round(availability.availablePercent)}%`
                   : "—"}
@@ -381,32 +380,31 @@ function QuotaDialog({
             </div>
           ) : null}
           {accounts.length ? (
-            <div className="grid gap-2">
-              {accounts.map((account) =>
-                claude ? (
-                  <div
-                    key={account.id}
-                    className="grid gap-2 rounded-lg border bg-muted/20 p-3"
-                  >
-                    <p className="truncate text-sm font-medium">
-                      {account.label}
-                    </p>
+            <ul className="divide-y divide-border" role="list">
+              {accounts.map((account) => (
+                <li
+                  key={account.id}
+                  className="grid min-w-0 gap-2 py-3 first:pt-0 last:pb-0"
+                >
+                  <p className="text-sm font-medium break-words">
+                    {account.label}
+                  </p>
+                  {claude ? (
                     <ClaudeAccountUsage
                       providerId={provider.id}
                       accountId={account.id}
                     />
-                  </div>
-                ) : (
-                  <AccountQuotaRow
-                    key={account.id}
-                    account={account}
-                    showCredits={provider.kind === "chatgpt"}
-                  />
-                ),
-              )}
-            </div>
+                  ) : (
+                    <AccountQuotaDetails
+                      account={account}
+                      showCredits={provider.kind === "chatgpt"}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
           ) : (
-            <p className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               No enabled, signed-in {quotaProviderLabel(provider)} accounts are
               available.
             </p>
