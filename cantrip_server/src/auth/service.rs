@@ -225,6 +225,7 @@ impl AuthService {
         let provider_catalogs = crate::settings::catalog_runtime::CatalogRuntime::new(
             crate::settings::repository::SettingsRepository::new(repository.database.clone()),
             workers.commands.clone(),
+            server_id.clone(),
         )?;
         let provider_accounts = crate::settings::account_service::AccountService::new(
             crate::settings::repository::SettingsRepository::new(repository.database.clone()),

@@ -377,6 +377,8 @@ export {
   providerCatalogSyncStatusSchema,
   providerCatalogSyncStateSchema,
   providerModelCatalogResultSchema,
+  claudeCodeModelListSchema,
+  claudeCodeAccountUsageSchema,
   providerConnectionTestStageSchema,
   providerConnectionTestResultSchema,
   workerProviderConnectionTestResultSchema,

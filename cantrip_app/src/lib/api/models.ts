@@ -1,5 +1,6 @@
 import {
   codexAuthStatusSchema,
+  claudeCodeAccountUsageSchema,
   codexDeviceLoginSchema,
   providerQuotaSnapshotSchema,
   providerRateLimitResetConsumeResultSchema,
@@ -179,6 +180,14 @@ export async function getClaudeCodeAccountStatus(
   return request(
     `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/claude-status`,
   );
+}
+
+export async function getClaudeCodeAccountUsage(
+  providerId: string,
+  accountId: string,
+) {
+  const path = `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/claude-usage`;
+  return claudeCodeAccountUsageSchema.parse(await request(path));
 }
 
 export async function listModelProviderAccounts(providerId: string) {

@@ -316,7 +316,7 @@ impl SettingsRepository {
                     profile_operations.insert(profile,operation.clone());
                     routed.insert((name,operation));
                 }
-                let by_name=input.models.iter().map(|model|Ok((model["nativeModelId"].as_js_string().context("native model ID")?,&model["canonicalModelId"]))).collect::<Result<HashMap<_,_>>>()?;
+                let by_name=input.models.iter().map(|model|Ok((model["nativeModelId"].as_js_string().context("native model ID")?,model))).collect::<Result<HashMap<_,_>>>()?;
                 let selected=input.auto_create_native_ids.as_ref().unwrap_or(&input.available);
                 let mut discovered = Vec::new();
                 for (id,name) in &models {
@@ -334,10 +334,12 @@ impl SettingsRepository {
                 };
                 for batch in discovered.chunks(BATCH) {
                     let values=WireValue::Array(batch.iter().map(|(id,name,operation)|{
-                        let canonical=by_name.get(&JsString::from(name.as_str())).copied().cloned().unwrap_or(WireValue::Null);
+                        let observed=by_name.get(&JsString::from(name.as_str())).copied();
+                        let canonical=observed.map(|model|model["canonicalModelId"].clone()).unwrap_or(WireValue::Null);
                         let canonical=canonical.as_js_string().map(|value|WireValue::String(value.lossy().into_owned().into())).unwrap_or(canonical);
+                        let profile_name=observed.filter(|model|model["metadataSource"]=="claude-code").and_then(|model|model["displayName"].as_js_string()).cloned().unwrap_or_else(||name.as_str().into());
                         let suffix=suffix_for(id,operation);
-                        WireValue::object([("id",WireValue::String(format!("discovered:model:{id}{suffix}").into())),("name",WireValue::String(name.as_str().into())),("canonical",canonical),("operation",WireValue::String((*operation).into()))])
+                        WireValue::object([("id",WireValue::String(format!("discovered:model:{id}{suffix}").into())),("name",WireValue::String(profile_name)),("canonical",canonical),("operation",WireValue::String((*operation).into()))])
                     }).collect());
                     tx.query("INSERT INTO model_profiles(id,owner_id,name,canonical_model_id,operation,discovery_managed) SELECT m.id,$2,m.name,m.canonical,m.operation,true FROM jsonb_to_recordset($1::text::jsonb) AS m(id text,name text,canonical text,operation text) ON CONFLICT(id) DO NOTHING", &[&values.stringify(),&owner]).await?;
                 }

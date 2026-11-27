@@ -38,6 +38,7 @@ fn failure(message: JsString) -> Response {
         "offline",
         "signed-in ChatGPT",
         "signed-in Grok",
+        "Sign in to this Claude Code account",
     ]
     .iter()
     .any(|part| text.contains(part))

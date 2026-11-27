@@ -2,6 +2,7 @@
 mod accounts;
 pub(crate) mod gateway;
 pub(crate) mod inference;
+mod inspect;
 mod release;
 mod responses;
 mod storage;

@@ -1468,7 +1468,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind,"claude-code.auth.status"|"claude-code.auth.remove") {
+                if matches!(kind,"claude-code.auth.status"|"claude-code.auth.remove"|"claude-code.account.inspect") {
                     let claude_code = claude_code.clone();
                     let encryption = encryption.clone();
                     let outgoing = outgoing.clone();
