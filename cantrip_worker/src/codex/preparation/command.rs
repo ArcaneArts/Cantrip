@@ -973,6 +973,14 @@ impl Ensurer {
                                 .await?;
                             loaded
                         };
+                        if matches!(stage, Some(HandoffStage::Destination { .. })) {
+                            profile::apply_handoff_reasoning(
+                                &runtime,
+                                &loaded,
+                                &command["model"]["reasoningEffort"],
+                            )
+                            .await?;
+                        }
                         if selection.intent == Intent::Configure || change_plan {
                             profile::apply_plan_mode(
                                 &runtime,
