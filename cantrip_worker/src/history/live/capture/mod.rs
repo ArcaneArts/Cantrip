@@ -212,9 +212,27 @@ impl Capture {
             if !state.observing || state.stopped {
                 return;
             }
+            let method = frame["method"].as_str();
+            let params = &frame["params"];
+            if method == Some("turn/started") {
+                state.awaiting_context = params["turn"]["id"].as_js_string().cloned();
+            } else if method == Some("turn/completed")
+                && state.awaiting_context.as_ref() == params["turn"]["id"].as_js_string()
+            {
+                state.awaiting_context = None;
+            }
+            // The start notification can precede the first retained turn
+            // context. Check again when activity arrives until the exact
+            // turn's context is present in a native history snapshot.
+            let awaiting_activity = matches!(method, Some("item/started" | "item/completed"))
+                && state
+                    .awaiting_context
+                    .as_ref()
+                    .is_some_and(|turn| params["turnId"].as_js_string() == Some(turn));
             let reconcile = state.cursors.notification(&frame)
+                || awaiting_activity
                 || matches!(
-                    frame["method"].as_str(),
+                    method,
                     Some("thread/started" | "turn/started" | "turn/completed")
                 );
             state.pending.push_back(Pending {

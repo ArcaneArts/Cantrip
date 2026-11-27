@@ -3,6 +3,7 @@ use crate::{
     history::live::observation::{Hub, RuntimeHub},
     native_items::{obj, s},
 };
+use cantrip_wire::value::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn timers_claim_one_writer_while_notifications_arrive_on_another_thread() -> Result<()> {
@@ -61,6 +62,68 @@ async fn timers_claim_one_writer_while_notifications_arrive_on_another_thread() 
     for (index, frame) in frames.iter().skip(1).enumerate() {
         assert_eq!(frame["sequence"].as_u64(), Some(index as u64 + 1));
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn live_items_retry_a_snapshot_until_their_turn_has_retained_context() -> Result<()> {
+    let hub = Hub::default();
+    hub.replace(Some("generation".into()));
+    let reads = Arc::new(AtomicUsize::new(0));
+    let retained = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let capture = Capture::new(Options {
+        runtime: Arc::new(RuntimeHub {
+            hub: hub.clone(),
+            read: Arc::new({
+                let (reads, retained) = (reads.clone(), retained.clone());
+                move |thread| {
+                    reads.fetch_add(1, Ordering::SeqCst);
+                    let contexts = if retained.load(Ordering::SeqCst) {
+                        vec![json!({"cwd":"/fixture","collaborationMode":"default"})]
+                    } else {
+                        Vec::new()
+                    };
+                    ready(Ok(json!({
+                        "thread":json!({"id":thread}),
+                        "history":json!({"turns":[json!({"turnId":"active","contexts":contexts})]}),
+                    })))
+                }
+            }),
+        }),
+        thread_id: "thread".into(),
+        append: Arc::new(|_| ready(Ok(Value::Null))),
+        on_persisted: None,
+        on_error: None,
+        timing: Timing::new(Some(1.), Some(2.), Some(0.))?,
+    })?;
+    capture.flush().await?;
+    hub.notification(
+        "turn/started".into(),
+        &json!({"threadId":"thread","turn":json!({"id":"active"})}),
+        None,
+    );
+    capture.flush().await?;
+    assert_eq!(reads.load(Ordering::SeqCst), 2);
+
+    retained.store(true, Ordering::SeqCst);
+    hub.notification(
+        "item/started".into(),
+        &json!({"threadId":"thread","turnId":"unrelated"}),
+        None,
+    );
+    capture.flush().await?;
+    assert_eq!(reads.load(Ordering::SeqCst), 2);
+
+    for method in ["item/started", "item/completed"] {
+        hub.notification(
+            method.into(),
+            &json!({"threadId":"thread","turnId":"active"}),
+            None,
+        );
+        capture.flush().await?;
+        assert_eq!(reads.load(Ordering::SeqCst), 3);
+    }
+    capture.close().await?;
     Ok(())
 }
 

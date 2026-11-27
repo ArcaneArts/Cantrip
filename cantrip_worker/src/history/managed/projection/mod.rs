@@ -57,6 +57,7 @@ struct Job {
     timer: Option<tokio::task::AbortHandle>,
     dirty: bool,
     failures: u32,
+    awaiting_context: bool,
     unavailable: Option<Failure>,
 }
 struct Entry {
@@ -156,6 +157,7 @@ impl Pump {
                         timer: None,
                         dirty: false,
                         failures: 0,
+                        awaiting_context: false,
                         unavailable: None,
                     }),
                 });
@@ -169,6 +171,11 @@ impl Pump {
                 return Ok(());
             }
             job.dirty = true;
+            if job.awaiting_context
+                && let Some(timer) = job.timer.take()
+            {
+                timer.abort();
+            }
         }
         self.schedule(entry, 0);
         Ok(())
