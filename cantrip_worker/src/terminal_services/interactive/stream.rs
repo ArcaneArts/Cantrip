@@ -71,6 +71,10 @@ impl LinkTarget {
     ) -> Result<Self> {
         let key = Shells::key(command, encryption)?;
         anyhow::ensure!(
+            !key.terminal.lossy().starts_with("claude-login:"),
+            "The Claude Code sign-in terminal requires its original connection."
+        );
+        anyhow::ensure!(
             owner.as_js_string() == Some(&key.authority.0),
             "Terminal owner changed."
         );

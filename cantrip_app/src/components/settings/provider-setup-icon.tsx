@@ -35,6 +35,7 @@ const providerMarks: Record<ProviderSetupKind, ProviderMark> = {
   "openai-compatible": Plug,
   chatgpt: { light: openAiLogo },
   grok: { light: grokLogo },
+  "claude-code": Plug,
 };
 
 export function ProviderSetupIcon({ setup }: { setup: ProviderSetupKind }) {

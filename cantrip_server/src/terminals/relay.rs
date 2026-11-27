@@ -28,12 +28,17 @@ pub(crate) struct Relay {
     closed: AtomicBool,
     inputs: Mutex<Option<mpsc::UnboundedSender<Value>>>,
 }
+
+pub(crate) enum Target {
+    Terminal(String),
+    ClaudeLogin { provider: String, account: String },
+}
 impl Relay {
     pub fn attach(
         service: Arc<AuthService>,
         owner: String,
         operation: Value,
-        terminal: String,
+        target: Target,
         peer: Arc<dyn Socket>,
     ) -> Arc<Self> {
         let (send, mut receive) = mpsc::unbounded_channel();
@@ -59,7 +64,7 @@ impl Relay {
         let pending = relay.clone();
         service
             .worker_maintenance
-            .spawn_child(async move { pending.start(&terminal).await });
+            .spawn_child(async move { pending.start(target).await });
         relay
     }
     fn send(&self, value: Value) -> Result<()> {
@@ -143,13 +148,21 @@ impl Relay {
                 let service = self.service.clone();
                 let attachment = self.attachment.clone();
                 self.service.worker_maintenance.spawn_child(async move {
-                    let _ = service.workers.commands.request(&worker,json!({"type":"terminal.detach","terminalId":context["terminalId"],"attachmentId":attachment}),None,None).await;
+                    let command = if context["kind"] == "claude-login" {
+                        json!({"type":"terminal.close","terminalId":context["terminalId"]})
+                    } else {
+                        json!({"type":"terminal.detach","terminalId":context["terminalId"],"attachmentId":attachment})
+                    };
+                    let _ = service.workers.commands.request(&worker,command,None,None).await;
                     Ok(())
                 });
             }
         }
     }
     async fn status(&self, context: &Value, status: &str) -> Result<()> {
+        if context["kind"] == "claude-login" {
+            return Ok(());
+        }
         self.service
             .worker_maintenance
             .record_status(&self.owner, context["terminalId"].as_str().unwrap(), status)
@@ -159,11 +172,16 @@ impl Relay {
         let context = self.context.lock().unwrap().clone().unwrap();
         if event["type"] == "terminal.ready" {
             if self.closed.load(Ordering::Acquire) {
-                self.service.workers.commands.request(
-                    context["workerId"].as_str().unwrap(),
-                    json!({"type":"terminal.detach","terminalId":context["terminalId"],"attachmentId":self.attachment}),
-                    None, None,
-                ).await?;
+                let command = if context["kind"] == "claude-login" {
+                    json!({"type":"terminal.close","terminalId":context["terminalId"]})
+                } else {
+                    json!({"type":"terminal.detach","terminalId":context["terminalId"],"attachmentId":self.attachment})
+                };
+                self.service
+                    .workers
+                    .commands
+                    .request(context["workerId"].as_str().unwrap(), command, None, None)
+                    .await?;
             } else {
                 self.status(&context, "running").await?;
                 self.send(json!({"type":"ready"}))?;
@@ -173,17 +191,41 @@ impl Relay {
         }
         Ok(())
     }
-    async fn start(self: &Arc<Self>, terminal: &str) -> Result<()> {
-        let Some(context) = super::Repository::new(self.service.repository.database.clone())
-            .context(&self.owner, terminal)
-            .await?
-        else {
+    async fn start(self: &Arc<Self>, target: Target) -> Result<()> {
+        let database = self.service.repository.database.clone();
+        let context = match target {
+            Target::Terminal(terminal) => {
+                super::Repository::new(database)
+                    .context(&self.owner, &terminal)
+                    .await?
+            }
+            Target::ClaudeLogin { provider, account } => {
+                let Some(operation) = self
+                    .operation
+                    .as_str()
+                    .filter(|value| uuid::Uuid::parse_str(value).is_ok())
+                else {
+                    self.peer
+                        .close(1008, "Claude Code login operation is invalid");
+                    return Ok(());
+                };
+                crate::settings::repository::SettingsRepository::new(database)
+                    .claude_account_worker(&self.owner, &provider, &account, true)
+                    .await?
+                    .map(|worker| json!({
+                        "kind":"claude-login", "workerId":worker, "terminalId":format!("claude-login:{operation}"),
+                        "providerId":provider, "accountId":account
+                    }))
+            }
+        };
+        let Some(context) = context else {
             self.error("Terminal not found.");
             self.peer.close(1008, "Terminal not found");
             return Ok(());
         };
-        if context["kind"] == "run-configuration"
-            || !wire::coercion::truthy(context.get("stateProtection"))
+        if context["kind"] != "claude-login"
+            && (context["kind"] == "run-configuration"
+                || !wire::coercion::truthy(context.get("stateProtection")))
         {
             self.error(
                 "Run configuration terminals are read-only and use the managed runtime output API.",
@@ -228,9 +270,24 @@ impl Relay {
                     })
                 })
             });
-            let result = self.service.workers.commands.request_with_timeout(worker,json!({"type":"terminal.open","terminalId":context["terminalId"],"attachmentId":self.attachment,"operationId":self.operation,"serverId":self.service.server_id,"worktreePath":context["worktreePath"],"stateProtection":context["stateProtection"],"cols":80,"rows":24,"launch":launch}),RequestTimeout::Disabled,Some(event)).await?;
+            let command = if context["kind"] == "claude-login" {
+                json!({"type":"terminal.claude-code.open","terminalId":context["terminalId"],"attachmentId":self.attachment,"operationId":self.operation,"serverId":self.service.server_id,"accountId":context["accountId"],"cols":80,"rows":24})
+            } else {
+                json!({"type":"terminal.open","terminalId":context["terminalId"],"attachmentId":self.attachment,"operationId":self.operation,"serverId":self.service.server_id,"worktreePath":context["worktreePath"],"stateProtection":context["stateProtection"],"cols":80,"rows":24,"launch":launch})
+            };
+            let result = self.service.workers.commands.request_with_timeout(worker,command,RequestTimeout::Disabled,Some(event)).await?;
             let result = crate::settings::parse_response("terminalOpenResultSchema",result.as_ref())?;
             if result["status"] == "exited" {
+                if context["kind"] == "claude-login" && result["exitCode"].as_i64() == Some(0) {
+                    crate::settings::repository::SettingsRepository::new(self.service.repository.database.clone())
+                        .record_claude_account_status(
+                            &self.owner,
+                            context["providerId"].as_str().context("Claude Code provider")?,
+                            context["accountId"].as_str().context("Claude Code account")?,
+                            worker,
+                            "signed-in",
+                        ).await?;
+                }
                 self.status(&context,if result["executionOutcome"]=="unknown" {"offline"} else {"exited"}).await?;
                 if !self.closed.load(Ordering::Acquire) { let mut message=json!({"type":"exit","exitCode":result["exitCode"],"signal":result["signal"]}); if let Some(outcome)=result.get("executionOutcome") {message["executionOutcome"]=outcome.clone();} self.send(message)?; }
             }

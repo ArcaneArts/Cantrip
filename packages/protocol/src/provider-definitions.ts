@@ -15,6 +15,7 @@ export const endpointProviderKinds = [
 export const modelProviderKinds = [
   "chatgpt",
   "grok",
+  "claude-code",
   "ollama",
   ...endpointProviderKinds,
   "openai-compatible",
@@ -44,6 +45,13 @@ export const providerDefinitions = {
     setupLabel: "Grok / SuperGrok Account",
     defaultName: "Grok",
     defaultBaseUrl: "https://cli-chat-proxy.grok.com/v1",
+    multipleInstances: false,
+  },
+  "claude-code": {
+    label: "Claude Code",
+    setupLabel: "Claude Code",
+    defaultName: "Claude Code",
+    defaultBaseUrl: "https://claude-code.invalid",
     multipleInstances: false,
   },
   ollama: {

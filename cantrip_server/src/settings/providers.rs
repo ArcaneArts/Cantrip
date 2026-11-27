@@ -11,7 +11,11 @@ fn account_kind(kind: &str) -> bool {
     kind == "chatgpt" || kind == "grok"
 }
 fn label(kind: &str) -> &'static str {
-    if kind == "grok" { "Grok" } else { "ChatGPT" }
+    match kind {
+        "claude-code" => "Claude Code",
+        "grok" => "Grok",
+        _ => "ChatGPT",
+    }
 }
 fn text<'a>(input: &'a WireValue, field: &str) -> Result<&'a JsString> {
     input[field]
@@ -56,15 +60,23 @@ impl SettingsRepository {
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let kind = text(input, "kind")?.lossy().into_owned();
         let name = text(input, "name")?.lossy().into_owned();
-        let base = normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?;
+        let base = if kind == "claude-code" {
+            "https://claude-code.invalid".to_owned()
+        } else {
+            normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?
+        };
         let reserve = input["weeklyUsageReservePercent"].as_i64().unwrap_or(3);
         let concurrency = input["maxConcurrentInference"].as_i64().unwrap_or(8);
         let protected_key = json_value(&input["protectedApiKey"])?;
+        anyhow::ensure!(
+            kind != "claude-code" || protected_key.is_null(),
+            "Claude Code sign-ins belong to the worker."
+        );
         let initial = input["initialAccount"].clone();
         let insert_context = super::query_error::provider_insert(&id, owner, input, &base, reserve);
         let owner = owner.to_owned();
         self.database.transaction(move |tx| Box::pin(async move {
-            if account_kind(&kind) && !tx.query("SELECT id FROM model_providers WHERE owner_id=$1 AND kind=$2 LIMIT 1", &[&owner,&kind]).await?.is_empty() {
+            if (account_kind(&kind) || kind == "claude-code") && !tx.query("SELECT id FROM model_providers WHERE owner_id=$1 AND kind=$2 LIMIT 1", &[&owner,&kind]).await?.is_empty() {
                 anyhow::bail!("A {} provider already exists. Add another sign-in to that provider instead.",label(&kind));
             }
             let rows=super::query_error::context(tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url,weekly_usage_reserve_percent,protected_api_key,max_concurrent_inference) VALUES($1,$2,$3,$4,$5,$6::text::integer,$7,$8::text::integer) RETURNING to_jsonb(model_providers)", &[&id,&owner,&name,&kind,&base,&reserve.to_string(),&protected_key.as_object().map(|_| &protected_key),&concurrency.to_string()]).await, &insert_context.0, &insert_context.1)?;
@@ -107,9 +119,12 @@ impl SettingsRepository {
                 Box::pin(async move {
                     let models = tx.query("SELECT DISTINCT r.model_id FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 INNER JOIN user_settings s ON s.user_id=$1 WHERE r.provider_id=$2 AND r.model_id IN (s.default_model_id,s.default_chat_model_id,s.default_council_model_id,s.default_council_subagent_model_id,s.default_subagent_model_id,s.labeling_model_id,s.default_embedding_model_id,s.default_decision_model_id)", &[&owner,&provider]).await?
                         .iter().map(|row| row.get::<String>(0)).collect::<Result<Vec<_>>>()?;
-                    if tx.query("DELETE FROM model_providers WHERE id=$1 AND owner_id=$2 RETURNING id", &[&provider,&owner]).await?.is_empty() {
-                        return Ok(false);
+                    let current = tx.query("SELECT kind FROM model_providers WHERE id=$1 AND owner_id=$2 FOR UPDATE", &[&provider,&owner]).await?;
+                    let Some(current) = current.first() else { return Ok(false) };
+                    if current.get::<String>(0)? == "claude-code" {
+                        anyhow::ensure!(tx.query("SELECT id FROM model_provider_accounts WHERE provider_id=$1 LIMIT 1", &[&provider]).await?.is_empty(), "Remove the Claude Code accounts before removing this provider.");
                     }
+                    tx.query("DELETE FROM model_providers WHERE id=$1 AND owner_id=$2", &[&provider,&owner]).await?;
                     // Keep profiles for configuration recovery. Only defaults
                     // whose last enabled route was deleted are cleared.
                     if !models.is_empty() {
@@ -151,8 +166,16 @@ impl SettingsRepository {
         if current["kind"] != kind.as_ref() {
             anyhow::bail!("Provider type cannot be changed. Create a new provider instead.")
         }
+        anyhow::ensure!(
+            kind != "claude-code" || input["protectedApiKey"].is_null(),
+            "Claude Code sign-ins belong to the worker."
+        );
         let name = text(input, "name")?.lossy();
-        let base = normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?;
+        let base = if kind == "claude-code" {
+            "https://claude-code.invalid".to_owned()
+        } else {
+            normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?
+        };
         let native_configuration_changed =
             current["baseUrl"] != base || input.get("protectedApiKey").is_some();
         let mut values = json!({"name":name,"kind":kind,"base_url":base});

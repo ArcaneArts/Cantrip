@@ -443,6 +443,7 @@ export const PROVIDER_REAUTH_REQUIRED_MESSAGE =
 export const modelProviderAccountSummarySchema = z.object({
   id: z.string().min(1),
   providerId: z.string().min(1),
+  boundWorkerId: z.string().min(1).max(200).optional(),
   label: z.string().trim().min(1).max(160),
   planType: z.string().max(160).nullable(),
   position: z.number().int().nonnegative(),
@@ -464,6 +465,7 @@ export const modelProviderAccountListSchema = z.array(
 
 export const modelProviderAccountCreateSchema = z.object({
   label: z.string().trim().min(1).max(160).default("Provider account"),
+  boundWorkerId: z.string().min(1).max(200).optional(),
 });
 
 export const modelProviderAccountUpdateSchema = z.object({
@@ -475,6 +477,7 @@ export const encryptedModelProviderAccountCreateSchema = z
   .object({
     id: z.string().uuid(),
     protectedLabel: protectedSecretEnvelopeSchema,
+    boundWorkerId: z.string().min(1).max(200).optional(),
   })
   .strict();
 

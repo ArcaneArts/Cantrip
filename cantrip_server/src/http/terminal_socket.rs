@@ -7,7 +7,7 @@ use super::{
 use crate::{
     auth::service::AuthService,
     live::{self, Socket as _, TransportLifetime},
-    terminals::relay::Relay,
+    terminals::relay::{Relay, Target},
     wire::{Value, coercion::truthy},
     workers::output::{Buffered, Queued, framed_size},
 };
@@ -20,6 +20,7 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use std::{
+    collections::HashMap,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -70,16 +71,28 @@ impl live::Socket for Peer {
 async fn connect(
     State(service): State<Arc<AuthService>>,
     Extension(ctx): Extension<Arc<Context>>,
-    Path(terminal): Path<String>,
+    Path(params): Path<HashMap<String, String>>,
     request: Request,
 ) -> Response {
     let origin = middleware::value(request.headers(), "origin");
+    let target = match (
+        params.get("terminalId"),
+        params.get("providerId"),
+        params.get("accountId"),
+    ) {
+        (Some(terminal), _, _) => Target::Terminal(terminal.clone()),
+        (_, Some(provider), Some(account)) => Target::ClaudeLogin {
+            provider: provider.clone(),
+            account: account.clone(),
+        },
+        _ => return super::settings::error(404, "Terminal not found."),
+    };
     let operation = account::query(request.uri()).get("operationId").cloned();
     let lifetime = service.live.transports.begin();
     websocket::upgrade(
         request,
         service.config.websocket_max_payload_bytes as usize,
-        move |socket, _| run(socket, service, ctx, origin, operation, terminal, lifetime),
+        move |socket, _| run(socket, service, ctx, origin, operation, target, lifetime),
     )
 }
 async fn run(
@@ -88,7 +101,7 @@ async fn run(
     ctx: Arc<Context>,
     origin: Option<String>,
     operation: Option<Value>,
-    terminal: String,
+    target: Target,
     lifetime: TransportLifetime,
 ) {
     let (send, mut outgoing) = mpsc::unbounded_channel();
@@ -124,7 +137,7 @@ async fn run(
                     service.clone(),
                     user.id.clone(),
                     operation.unwrap(),
-                    terminal,
+                    target,
                     peer.clone(),
                 ));
             }
@@ -211,5 +224,10 @@ async fn run(
     peer.open.store(false, Ordering::Release);
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {
-    Router::new().route("/api/terminals/{terminalId}/connect", get(connect))
+    Router::new()
+        .route("/api/terminals/{terminalId}/connect", get(connect))
+        .route(
+            "/api/settings/providers/{providerId}/accounts/{accountId}/claude-login/connect",
+            get(connect),
+        )
 }

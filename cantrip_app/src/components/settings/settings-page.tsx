@@ -187,6 +187,7 @@ import {
   modelsSettingsSearchTab,
   providerModelsTab,
 } from "./models-settings-state";
+import { ClaudeCodeAccounts } from "./claude-code-accounts";
 import {
   providerSetupDefaults,
   providerInstanceName,
@@ -1414,8 +1415,11 @@ export function SettingsPage({
             ? "https://cli-chat-proxy.grok.com/v1"
             : "https://api.openai.com/v1"
           : baseUrl,
-        ...(isAccountProviderKind(providerKind)
-          ? { apiKey: null }
+        ...(isAccountProviderKind(providerKind) ||
+        providerKind === "claude-code"
+          ? providerKind === "claude-code"
+            ? {}
+            : { apiKey: null }
           : editingProvider
             ? removeApiKey
               ? { apiKey: null }
@@ -2384,18 +2388,28 @@ export function SettingsPage({
                   onEditModel={(model) => openModelDialog(model)}
                   onRemoveModel={(model) => removeModel.mutate(model.id)}
                   onPreferencesChange={preferences.mutateAsync}
-                  renderProviderOverview={(provider) => (
-                    <ProviderRow
-                      key={provider.id}
-                      availableResetCredits={chatGptAvailableResetCredits}
-                      provider={provider}
-                      workerId={worker?.workerId ?? null}
-                      removing={removeProvider.isPending}
-                      onEdit={() => openProviderDialog(provider)}
-                      onAnalytics={() => setAnalyticsProvider(provider)}
-                      onRemove={() => removeProvider.mutate(provider.id)}
-                    />
-                  )}
+                  renderProviderOverview={(provider) =>
+                    provider.kind === "claude-code" ? (
+                      <ClaudeCodeAccounts
+                        key={provider.id}
+                        provider={provider}
+                        workers={workers.data ?? []}
+                        onEdit={() => openProviderDialog(provider)}
+                        onRemove={() => removeProvider.mutate(provider.id)}
+                      />
+                    ) : (
+                      <ProviderRow
+                        key={provider.id}
+                        availableResetCredits={chatGptAvailableResetCredits}
+                        provider={provider}
+                        workerId={worker?.workerId ?? null}
+                        removing={removeProvider.isPending}
+                        onEdit={() => openProviderDialog(provider)}
+                        onAnalytics={() => setAnalyticsProvider(provider)}
+                        onRemove={() => removeProvider.mutate(provider.id)}
+                      />
+                    )
+                  }
                 />
               ) : null}
               {section === "workspaces" ? (
@@ -2648,8 +2662,14 @@ export function SettingsPage({
                   </p>
                 </div>
               </Field>
-              {!isAccountProviderKind(providerKind) &&
-              providerSetup !== "zai" ? (
+              {providerKind === "claude-code" ? (
+                <p className="text-sm text-muted-foreground">
+                  Add Claude subscription accounts from this provider’s Models
+                  tab. Each account is available on the worker where you sign
+                  in.
+                </p>
+              ) : !isAccountProviderKind(providerKind) &&
+                providerSetup !== "zai" ? (
                 <Field label="Base URL">
                   <div className="space-y-1.5">
                     <input
@@ -2710,7 +2730,8 @@ export function SettingsPage({
                   </p>
                 </div>
               )}
-              {!isAccountProviderKind(providerKind) ? (
+              {providerKind !== "claude-code" &&
+              !isAccountProviderKind(providerKind) ? (
                 <Field
                   label={
                     providerSetup === "zai"
@@ -2738,7 +2759,8 @@ export function SettingsPage({
                 </Field>
               ) : null}
             </div>
-            {!isAccountProviderKind(providerKind) &&
+            {providerKind !== "claude-code" &&
+            !isAccountProviderKind(providerKind) &&
             editingProvider?.hasApiKey ? (
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <input
@@ -2749,7 +2771,8 @@ export function SettingsPage({
                 Remove the saved API key
               </label>
             ) : null}
-            {!isAccountProviderKind(providerKind) ? (
+            {providerKind !== "claude-code" &&
+            !isAccountProviderKind(providerKind) ? (
               <div className="flex flex-col gap-3 border-y py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Connection test</p>

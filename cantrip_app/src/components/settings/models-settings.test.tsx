@@ -411,7 +411,7 @@ describe("Models provider navigation", () => {
     await act(async () => view.unmount());
   });
 
-  it.each(["chatgpt", "grok"] as const)(
+  it.each(["chatgpt", "grok", "claude-code"] as const)(
     "disables adding a second %s provider but permits other types and re-enables after removal",
     async (kind) => {
       const accountProvider = { ...providers[0]!, id: kind, kind, name: kind };
@@ -548,6 +548,7 @@ describe("provider setup presets", () => {
       "openai-compatible",
       "chatgpt",
       "grok",
+      "claude-code",
     ]);
     for (const preset of providerSetupOptions) {
       expect(providerSetupDefaults(preset.id)).toBe(preset);

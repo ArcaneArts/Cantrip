@@ -256,7 +256,7 @@
     "workerCredentialRoutes": 46,
     "durableTables": 135,
     "agentOperations": 75,
-    "workerCommands": 328,
+    "workerCommands": 331,
     "liveResources": 48,
     "clientControlCommands": 4,
     "cliCommands": 36,
@@ -276,7 +276,7 @@
     "cliCommands": "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "08ae093282f7451cc3b9ff34413133d5a8fc51ad8a91b9b2f20463aba8747477",
-    "workerCommands": "c11b41698e004a3d3a2eef81ff9a3146ae57259a29795e034b0ce8c204d8ffa1",
+    "workerCommands": "64e0da3c1e2daa0484c0ae30049c55823a103ed010867dbfd629a0ac327969e8",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -9014,6 +9014,8 @@
     "chat.turn",
     "chat.turn.protect",
     "chat.turn.rollback",
+    "claude-code.auth.remove",
+    "claude-code.auth.status",
     "codegraph.rebuild",
     "codegraph.status",
     "codegraph.sync",
@@ -9219,6 +9221,7 @@
     "task.goal.source",
     "task.message.protect",
     "task.operation.prepare",
+    "terminal.claude-code.open",
     "terminal.close",
     "terminal.detach",
     "terminal.input",
@@ -9687,6 +9690,16 @@
       "command": "chat.turn.rollback",
       "classification": "intentionally-public-control-plane",
       "rationale": "reviewed worker lifecycle or capability contract"
+    },
+    {
+      "command": "claude-code.auth.remove",
+      "classification": "intentionally-public-control-plane",
+      "rationale": "Owned account and server identifiers select a worker-local profile. The worker returns only sign-in status or removal confirmation."
+    },
+    {
+      "command": "claude-code.auth.status",
+      "classification": "intentionally-public-control-plane",
+      "rationale": "Owned account and server identifiers select a worker-local profile. The worker returns only sign-in status or removal confirmation."
     },
     {
       "command": "codegraph.rebuild",
@@ -10712,6 +10725,11 @@
       "command": "task.operation.prepare",
       "classification": "endpoint-protected",
       "rationale": "operation-bound protected worker contract"
+    },
+    {
+      "command": "terminal.claude-code.open",
+      "classification": "endpoint-protected",
+      "rationale": "Owned account and operation identifiers open an ephemeral worker PTY. Its input and output use the encrypted terminal stream."
     },
     {
       "command": "terminal.close",

@@ -1,6 +1,8 @@
 //! The worker's private, versioned installation of Anthropic's Claude Code.
+mod accounts;
 mod release;
 mod storage;
+pub use accounts::{Profile, ProfileLease, SignIn};
 
 use self::{
     release::{BINARY, Source},
@@ -246,4 +248,4 @@ fn command(executable: &Path, profile: &Path) -> Result<Command> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

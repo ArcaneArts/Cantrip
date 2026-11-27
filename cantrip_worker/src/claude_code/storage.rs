@@ -256,7 +256,7 @@ pub(super) fn private(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn lock_file(path: &Path) -> Result<File> {
+pub(super) fn lock_file(path: &Path) -> Result<File> {
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true).truncate(false);
     #[cfg(unix)]

@@ -173,6 +173,32 @@ export const workerSurfaceCommandSchemas = [
   }),
   z
     .object({
+      type: z.literal("terminal.claude-code.open"),
+      terminalId: z.string().startsWith("claude-login:").max(60),
+      attachmentId: z.string().uuid(),
+      operationId: z.string().uuid(),
+      accountId: z.string().uuid(),
+      serverId: z.string().min(1).max(255),
+      cols: z.number().int().min(1).max(1_000),
+      rows: z.number().int().min(1).max(1_000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("claude-code.auth.status"),
+      accountId: z.string().uuid(),
+      serverId: z.string().min(1).max(255),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("claude-code.auth.remove"),
+      accountId: z.string().uuid(),
+      serverId: z.string().min(1).max(255),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("terminal.input"),
       terminalId: z.string().min(1),
       serverId: z.string().min(1).max(2_000),

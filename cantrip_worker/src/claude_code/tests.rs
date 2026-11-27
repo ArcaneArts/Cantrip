@@ -194,3 +194,25 @@ async fn installs_updates_rolls_back_and_isolates_profiles() -> Result<()> {
     server.abort();
     Ok(())
 }
+
+#[cfg(unix)]
+pub(crate) fn install_fixture(manager: &Manager, script: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    use std::os::unix::fs::PermissionsExt;
+
+    manager.storage.prepare()?;
+    let stage = manager.storage.stage()?;
+    let binary = stage.path().join(BINARY);
+    fs::write(&binary, script)?;
+    fs::set_permissions(binary, fs::Permissions::from_mode(0o700))?;
+    let installed = Installed {
+        version: release::Version::parse("2.1.1")?,
+        size: script.len() as u64,
+        checksum: release::hex(&Sha256::digest(script.as_bytes())),
+    };
+    manager.storage.promote(stage.path(), &installed)?;
+    manager.storage.write(&Pointer {
+        active: installed,
+        previous: None,
+    })
+}

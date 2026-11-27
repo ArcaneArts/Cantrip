@@ -16,7 +16,7 @@ describe("provider instance policy", () => {
     for (const kind of modelProviderKinds) {
       expect(modelProviderKindSchema.parse(kind)).toBe(kind);
       expect(providerDefinitions[kind].multipleInstances).toBe(
-        !isAccountProviderKind(kind),
+        !isAccountProviderKind(kind) && kind !== "claude-code",
       );
       expect(providerUsesChatCompletions(kind)).toBe(kind === "mlx-lm");
     }

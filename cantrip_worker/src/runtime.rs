@@ -198,7 +198,7 @@ async fn cycle(
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
     let catalog_version = codex_compatibility["version"]["raw"].clone();
     let data_directory = config.data_directory.clone();
-    let claude_code = crate::claude_code::Manager::new(&data_directory);
+    let claude_code = Arc::new(crate::claude_code::Manager::new(&data_directory));
     let codex_binary = config.codex_installation.binary.clone();
     let configuration = Arc::new(Mutex::new(config));
     let cli = crate::cli::Broker::start(
@@ -501,6 +501,7 @@ async fn cycle(
         tokio::spawn(async move { manager.run(&logs).await })
     };
     let claude_code_task = {
+        let claude_code = claude_code.clone();
         let logs = logs.clone();
         let mut stop = stop_rx.clone();
         tokio::spawn(async move { claude_code.run(&mut stop, &logs).await })
@@ -1457,12 +1458,25 @@ async fn cycle(
                     let shells=shells.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     let turns = turns.clone();
                     let binary = codex_binary.clone();
+                    let claude_code = claude_code.clone();
                     commands.spawn(async move {
                         let result=shells.execute(&request["command"], crate::terminal_services::interactive::Ports {
-                            encryption:&encryption,routes:&routing,scope:&scope,codex_binary:&binary,turns:&turns,outbound:&outgoing,
+                            encryption:&encryption,routes:&routing,scope:&scope,codex_binary:&binary,turns:&turns,outbound:&outgoing,claude_code:&claude_code,
                             request_id:&request["requestId"],socket_epoch:request["socketEpoch"].as_u64().unwrap_or_default(),
                         }).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if matches!(kind,"claude-code.auth.status"|"claude-code.auth.remove") {
+                    let claude_code = claude_code.clone();
+                    let encryption = encryption.clone();
+                    let outgoing = outgoing.clone();
+                    let logs = logs.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = claude_code.auth_command(&request["command"], &encryption).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
                 }
