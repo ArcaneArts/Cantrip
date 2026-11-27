@@ -83,6 +83,12 @@ export function providerOperationSupport(
   provider: Provider,
 ): Record<ModelOperation, "supported" | "unsupported" | "unknown"> {
   const family = operationProviderFamily(provider);
+  if (family === "claude-code")
+    return {
+      language: "unsupported",
+      embedding: "unsupported",
+      decision: "unsupported",
+    };
   if (family === "chatgpt" || family === "grok")
     return {
       language: "supported",

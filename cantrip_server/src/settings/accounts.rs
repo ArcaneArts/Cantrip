@@ -25,7 +25,7 @@ impl std::error::Error for CredentialConflict {}
 
 const ACCOUNT_SCOPE: &str =
     "a.id=$3 AND a.provider_id=$2 AND p.owner_id=$1 AND p.kind IN ('chatgpt','grok')";
-const OWNED: &str = "EXISTS(SELECT 1 FROM model_providers p WHERE p.id=$2 AND p.owner_id=$1 AND p.kind IN ('chatgpt','grok'))";
+const OWNED: &str = "EXISTS(SELECT 1 FROM model_providers p WHERE p.id=$2 AND p.owner_id=$1 AND p.kind IN ('chatgpt','grok','claude-code'))";
 
 fn migration(row: &Value) -> Value {
     let a = &row["account"];
@@ -56,12 +56,41 @@ fn expires(value: &Value) -> Result<Option<String>> {
 }
 
 impl SettingsRepository {
+    pub async fn claude_account_worker(
+        &self,
+        owner: &str,
+        provider: &str,
+        account: &str,
+        require_enabled: bool,
+    ) -> Result<Option<String>> {
+        let rows = self.database.query(
+            "SELECT w.id FROM model_provider_accounts a JOIN model_providers p ON p.id=a.provider_id JOIN workers w ON w.id=a.bound_worker_id AND w.owner_id=p.owner_id WHERE p.owner_id=$1 AND p.id=$2 AND p.kind='claude-code' AND a.id=$3 AND (NOT $4 OR a.enabled)",
+            &[&owner, &provider, &account, &require_enabled],
+        ).await?;
+        rows.first().map(|row| row.get(0)).transpose()
+    }
+
+    pub async fn record_claude_account_status(
+        &self,
+        owner: &str,
+        provider: &str,
+        account: &str,
+        worker: &str,
+        status: &str,
+    ) -> Result<()> {
+        self.database.query(
+            "INSERT INTO model_provider_account_workers(account_id,worker_id,auth_state,last_synced_at,updated_at) SELECT a.id,a.bound_worker_id,$5,$6,$6 FROM model_provider_accounts a JOIN model_providers p ON p.id=a.provider_id WHERE p.owner_id=$1 AND p.id=$2 AND p.kind='claude-code' AND a.id=$3 AND a.bound_worker_id=$4 ON CONFLICT(account_id,worker_id) DO UPDATE SET auth_state=excluded.auth_state,last_synced_at=excluded.last_synced_at,updated_at=excluded.updated_at",
+            &[&owner, &provider, &account, &worker, &status, &now()],
+        ).await?;
+        Ok(())
+    }
+
     pub async fn list_provider_accounts(
         &self,
         owner: &str,
         provider: &str,
     ) -> Result<Option<Vec<Value>>> {
-        if self.database.query("SELECT id FROM model_providers WHERE id=$2 AND owner_id=$1 AND kind IN ('chatgpt','grok') LIMIT 1", &[&owner,&provider]).await?.is_empty() { return Ok(None) }
+        if self.database.query("SELECT id FROM model_providers WHERE id=$2 AND owner_id=$1 AND kind IN ('chatgpt','grok','claude-code') LIMIT 1", &[&owner,&provider]).await?.is_empty() { return Ok(None) }
         let accounts=self.json_rows("SELECT to_jsonb(a) FROM model_provider_accounts a WHERE provider_id=$1 ORDER BY position ASC", &[&provider]).await?;
         let bindings=self.json_rows("SELECT to_jsonb(b) FROM model_provider_account_workers b INNER JOIN model_provider_accounts a ON a.id=b.account_id AND a.provider_id=$1", &[&provider]).await?;
         Ok(Some(
@@ -175,14 +204,20 @@ impl SettingsRepository {
     ) -> Result<Option<Value>> {
         let (owner, provider, input) = (owner.to_owned(), provider.to_owned(), input.clone());
         self.database.transaction(move |tx| Box::pin(async move {
-            let providers=tx.query("SELECT kind FROM model_providers WHERE id=$2 AND owner_id=$1 AND kind IN ('chatgpt','grok') LIMIT 1", &[&owner,&provider]).await?;
+            let providers=tx.query("SELECT kind FROM model_providers WHERE id=$2 AND owner_id=$1 AND kind IN ('chatgpt','grok','claude-code') FOR UPDATE", &[&owner,&provider]).await?;
             let Some(row)=providers.first() else { return Ok(None) };
+            let kind = row.get::<String>(0)?;
+            let bound_worker = input["boundWorkerId"].as_str();
+            anyhow::ensure!((kind == "claude-code") == bound_worker.is_some(),"A Claude Code account requires its worker.");
+            if let Some(worker) = bound_worker {
+                anyhow::ensure!(!tx.query("SELECT id FROM workers WHERE id=$1 AND owner_id=$2", &[&worker,&owner]).await?.is_empty(),"Worker not found.");
+            }
             let positions=tx.query("SELECT position FROM model_provider_accounts WHERE provider_id=$1 ORDER BY position DESC LIMIT 1", &[&provider]).await?;
             let position=positions.first().map(|row| row.get::<i32>(0).map(i64::from)).transpose()?.unwrap_or(-1)+1;
             let id=text(&input,"id")?.lossy();
             let label=input["protectedLabel"].stringify();
-            let accounts=tx.query("INSERT INTO model_provider_accounts(id,provider_id,protected_label,position,credential_home_key) VALUES($1,$2,$3::text::jsonb,$4::text::integer,$1) RETURNING to_jsonb(model_provider_accounts)", &[&id.as_ref(),&provider,&label,&position.to_string()]).await?;
-            let account=accounts.first().with_context(||format!("Database returned no row after creating a {} account.",if row.get::<String>(0).is_ok_and(|kind| kind=="grok") {"Grok"}else{"ChatGPT"}))?.get(0)?;
+            let accounts=tx.query("INSERT INTO model_provider_accounts(id,provider_id,protected_label,position,credential_home_key,bound_worker_id) VALUES($1,$2,$3::text::jsonb,$4::text::integer,$1,$5) RETURNING to_jsonb(model_provider_accounts)", &[&id.as_ref(),&provider,&label,&position.to_string(),&bound_worker]).await?;
+            let account=accounts.first().context("Database returned no row after creating a provider account.")?.get(0)?;
             Ok(Some(account_summary(&account,&[])?))
         })).await
     }
@@ -217,7 +252,9 @@ impl SettingsRepository {
     ) -> Result<bool> {
         let (owner, provider, ids) = (owner.to_owned(), provider.to_owned(), ids.to_vec());
         self.database.transaction(move |tx| Box::pin(async move {
-            let rows=tx.query("SELECT a.id,a.position FROM model_provider_accounts a INNER JOIN model_providers p ON p.id=a.provider_id WHERE a.provider_id=$2 AND p.owner_id=$1 AND p.kind IN ('chatgpt','grok')", &[&owner,&provider]).await?;
+            let providers=tx.query("SELECT id FROM model_providers WHERE id=$2 AND owner_id=$1 AND kind IN ('chatgpt','grok','claude-code') FOR UPDATE", &[&owner,&provider]).await?;
+            if providers.is_empty() { return Ok(false) }
+            let rows=tx.query("SELECT id,position FROM model_provider_accounts WHERE provider_id=$1", &[&provider]).await?;
             let accounts=rows.iter().map(|row|Ok((JsString::from(row.get::<String>(0)?),i64::from(row.get::<i32>(1)?)))).collect::<Result<Vec<_>>>()?;
             if accounts.len()!=ids.len() || accounts.iter().any(|(id,_)| !ids.contains(id)) { return Ok(false) }
             let offset=accounts.iter().map(|(_,position)|*position).fold(accounts.len() as i64-1,i64::max)+1;

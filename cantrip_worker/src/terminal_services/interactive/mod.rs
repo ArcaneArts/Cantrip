@@ -11,6 +11,9 @@ use super::{
 };
 use crate::{
     cantrip_os::terminal,
+    claude_code::{
+        self, Installation as ClaudeInstallation, Profile as ClaudeProfile, ProfileLease,
+    },
     codex::turn::Turns,
     connection::Outbound,
     encryption::Service,
@@ -54,12 +57,14 @@ enum Location {
     Host(PathBuf),
     Guest(String),
     Console(String),
+    ClaudeLogin(ClaudeProfile),
 }
 
 enum Launch {
     Host(Configuration),
     Guest(terminal::Target),
     Console { command: Value, cwd: JsString },
+    ClaudeLogin(ClaudeInstallation, ProfileLease),
 }
 
 #[derive(Default)]
@@ -85,6 +90,7 @@ pub(crate) struct Ports<'a> {
     pub scope: &'a Scope,
     pub codex_binary: &'a std::path::Path,
     pub turns: &'a Turns,
+    pub claude_code: &'a claude_code::Manager,
     pub outbound: &'a Arc<Outbound>,
     pub request_id: &'a Value,
     pub socket_epoch: u64,
@@ -96,6 +102,7 @@ impl Shells {
             command,
             "terminal.prepare-state"
                 | "terminal.open"
+                | "terminal.claude-code.open"
                 | "terminal.detach"
                 | "terminal.input"
                 | "terminal.resize"
@@ -148,10 +155,26 @@ impl Shells {
             "Terminal command belongs to a disconnected socket.",
         );
         let key = Self::key(command, ports.encryption)?;
+        let claude_login = key.terminal.lossy().starts_with("claude-login:");
+        if claude_login {
+            anyhow::ensure!(
+                matches!(
+                    command["type"].as_str(),
+                    Some(
+                        "terminal.claude-code.open"
+                            | "terminal.input"
+                            | "terminal.resize"
+                            | "terminal.close"
+                    )
+                ),
+                "The Claude Code sign-in terminal requires its original connection."
+            );
+        }
         match command["type"].as_str() {
             Some("terminal.prepare-state") => {
                 private_state::prepare_console(command, ports.encryption)
             }
+            Some("terminal.claude-code.open") => self.open(command, key, &ports).await,
             Some("terminal.open") => self
                 .open(command, key, &ports)
                 .await
@@ -169,18 +192,9 @@ impl Shells {
             }
             Some("terminal.close") => {
                 let _transition = self.transition().await;
-                let pending = {
-                    let inner = self.inner.lock().await;
-                    inner.entries.get(&key).map(|entry| {
-                        entry.stop.send_replace(true);
-                        entry.done.clone()
-                    })
-                };
-                if let Some(mut done) = pending {
-                    done.wait_for(|finished| *finished)
-                        .await
-                        .context("Terminal retirement was not confirmed")?;
-                    self.inner.lock().await.entries.remove(&key);
+                self.retire(&key).await?;
+                if claude_login {
+                    return Ok(json!({"accepted":true}));
                 }
                 self.guests
                     .close(&key.terminal, &key.authority, ports.encryption.worker_id())
@@ -192,55 +206,128 @@ impl Shells {
         }
     }
 
+    async fn retire(&self, key: &Key) -> Result<()> {
+        let pending = {
+            let inner = self.inner.lock().await;
+            inner.entries.get(key).map(|entry| {
+                entry.stop.send_replace(true);
+                entry.done.clone()
+            })
+        };
+        if let Some(mut done) = pending {
+            done.wait_for(|finished| *finished)
+                .await
+                .context("Terminal retirement was not confirmed")?;
+            self.inner.lock().await.entries.remove(key);
+        }
+        Ok(())
+    }
+
     async fn open(&self, command: &Value, key: Key, ports: &Ports<'_>) -> Result<Value> {
+        let result = if command["type"] == "terminal.claude-code.open" {
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(15 * 60),
+                self.open_attachment(command, &key, ports),
+            )
+            .await
+            .context("Claude Code sign-in timed out.");
+            let _transition = self.transition().await;
+            self.retire(&key).await?;
+            self.replay
+                .lock()
+                .unwrap()
+                .release(&binding(command, "input"));
+            result?
+        } else {
+            self.open_attachment(command, &key, ports).await
+        };
+        result
+    }
+
+    async fn open_attachment(
+        &self,
+        command: &Value,
+        key: &Key,
+        ports: &Ports<'_>,
+    ) -> Result<Value> {
         let command = ports.routes.resolve(command).await?;
         let guest = command["worktreePath"].is_object();
-        let launch = match (command["launch"]["type"].as_str(), guest) {
-            (Some("shell"), false) => {
-                Launch::Host(private_state::open_host(&command, ports.encryption)?)
+        let claude_login = command["type"] == "terminal.claude-code.open";
+        let launch = if claude_login {
+            anyhow::ensure!(
+                key.terminal.lossy()
+                    == format!(
+                        "claude-login:{}",
+                        command["operationId"]
+                            .as_str()
+                            .context("Claude Code login operation")?
+                    ),
+                "The Claude Code sign-in terminal identity changed."
+            );
+            let account = uuid::Uuid::parse_str(
+                command["accountId"]
+                    .as_str()
+                    .context("Claude Code account ID")?,
+            )?;
+            let profile = ClaudeProfile::bound(&key.authority.0, &key.authority.1, account);
+            let mut connection = ports.outbound.stream_epoch();
+            if *connection.borrow_and_update() != ports.socket_epoch {
+                return Ok(detached());
             }
-            (Some("shell" | "codex"), true) => {
-                let state = private_state::open_state(&command, ports.encryption)?;
-                let target = terminal::Target::new(
-                    &command,
-                    &state["directory"],
-                    &key.authority.0,
-                    ports.encryption.worker_id(),
-                )?;
-                if command["launch"]["type"] == "shell" {
-                    Launch::Guest(target)
-                } else {
-                    let mut launch = command["launch"].clone();
-                    anyhow::ensure!(
-                        launch["session"].is_object(),
-                        "The managed console requires a Chat session."
-                    );
-                    if let Some(declared) = launch["session"].get("osExecution") {
+            let installation = tokio::select! {
+                _ = connection.changed() => return Ok(detached()),
+                _ = ports.scope.stopped() => return Ok(detached()),
+                result = ports.claude_code.installation() => result?,
+            };
+            Launch::ClaudeLogin(installation, ports.claude_code.begin_sign_in(profile)?)
+        } else {
+            match (command["launch"]["type"].as_str(), guest) {
+                (Some("shell"), false) => {
+                    Launch::Host(private_state::open_host(&command, ports.encryption)?)
+                }
+                (Some("shell" | "codex"), true) => {
+                    let state = private_state::open_state(&command, ports.encryption)?;
+                    let target = terminal::Target::new(
+                        &command,
+                        &state["directory"],
+                        &key.authority.0,
+                        ports.encryption.worker_id(),
+                    )?;
+                    if command["launch"]["type"] == "shell" {
+                        Launch::Guest(target)
+                    } else {
+                        let mut launch = command["launch"].clone();
                         anyhow::ensure!(
-                            *declared == command["worktreePath"],
-                            "The console's Linux placement changed."
+                            launch["session"].is_object(),
+                            "The managed console requires a Chat session."
                         );
+                        if let Some(declared) = launch["session"].get("osExecution") {
+                            anyhow::ensure!(
+                                *declared == command["worktreePath"],
+                                "The console's Linux placement changed."
+                            );
+                        }
+                        launch["session"]["osExecution"] = command["worktreePath"].clone();
+                        Launch::Console {
+                            command: launch,
+                            cwd: target.cwd().into(),
+                        }
                     }
-                    launch["session"]["osExecution"] = command["worktreePath"].clone();
+                }
+                (Some("codex"), false) => {
+                    let configuration = private_state::open_host(&command, ports.encryption)?;
+                    let launch = command["launch"].clone();
+                    anyhow::ensure!(
+                        launch["session"].is_object() && launch["session"]["osExecution"].is_null(),
+                        "The console requires a managed Host Chat session."
+                    );
                     Launch::Console {
                         command: launch,
-                        cwd: target.cwd().into(),
+                        cwd: crate::filesystem::paths::text(&configuration.cwd),
                     }
                 }
+                _ => bail!("The terminal requires a different runtime."),
             }
-            (Some("codex"), false) => {
-                let configuration = private_state::open_host(&command, ports.encryption)?;
-                let launch = command["launch"].clone();
-                anyhow::ensure!(
-                    launch["session"].is_object() && launch["session"]["osExecution"].is_null(),
-                    "The console requires a managed Host Chat session."
-                );
-                Launch::Console {
-                    command: launch,
-                    cwd: crate::filesystem::paths::text(&configuration.cwd),
-                }
-            }
-            _ => bail!("The terminal requires a different runtime."),
         };
         let view_id = command["attachmentId"].as_js_string().unwrap();
         let mut connection = ports.outbound.stream_epoch();
@@ -285,7 +372,7 @@ impl Shells {
                 view.state.lock().unwrap().display.clone()
             } else {
                 self.shell(
-                    &key,
+                    key,
                     launch,
                     size(&command),
                     &command["managedPreparationGeneration"],
@@ -297,7 +384,7 @@ impl Shells {
                 biased;
                 _ = connection.changed() => return Ok(detached()),
                 _ = ports.scope.stopped() => return Ok(detached()),
-                result = self.present(&key, &display, view_id, view, transition) => result?,
+                result = self.present(key, &display, view_id, view, transition) => result?,
             };
             if let Some(result) = finished {
                 return Ok(result);
@@ -333,6 +420,7 @@ impl Shells {
         let location = match &launch {
             Launch::Host(configuration) => Location::Host(configuration.cwd.clone()),
             Launch::Guest(target) => Location::Guest(target.identity.clone()),
+            Launch::ClaudeLogin(_, profile) => Location::ClaudeLogin(profile.profile),
             Launch::Console { command, cwd } => Location::Console(payload_digest(&json!({
                 "session":command["session"], "threadId":command["threadId"],
                 "modelRouteId":command["model"]["routeId"], "providerId":command["provider"]["id"],
@@ -354,10 +442,14 @@ impl Shells {
                 let encryption = ports.encryption.clone();
                 let outbound = ports.outbound.clone();
                 let preparation = preparation.clone();
+                let ephemeral = matches!(location, Location::ClaudeLogin(_));
                 move |result: &Value| {
-                    if encryption.bound_identity().is_ok_and(|(owner, server)| {
-                        owner == key.authority.0 && server.as_js_string() == Some(&key.authority.1)
-                    }) {
+                    if !ephemeral
+                        && encryption.bound_identity().is_ok_and(|(owner, server)| {
+                            owner == key.authority.0
+                                && server.as_js_string() == Some(&key.authority.1)
+                        })
+                    {
                         let mut notification = json!({"type":"terminal.runtime.observed",
                             "workerProcessGeneration":generation,"terminalId":key.terminal,
                             "status":"exited","exitCode":result["exitCode"],"signal":result["signal"],
@@ -370,6 +462,19 @@ impl Shells {
                 }
             };
             match launch {
+                Launch::ClaudeLogin(installation, profile) => {
+                    let (entry, actor) = process::spawn(
+                        process::Local::ClaudeLogin(installation, profile),
+                        location.clone(),
+                        key.terminal.clone(),
+                        size,
+                        self.logs.clone(),
+                        exited,
+                    )
+                    .await?;
+                    inner.jobs.spawn(actor);
+                    inner.entries.insert(key.clone(), entry);
+                }
                 Launch::Host(configuration) => {
                     let (mut entry, actor) = process::spawn(
                         process::Local::Shell(configuration.cwd, self.environment.clone()),

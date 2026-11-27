@@ -175,6 +175,9 @@ pub(super) fn account_summary(account: &Value, bindings: &[Value]) -> Result<Val
     );
     output["weeklyUsageUsedPercent"] =
         percentage(&account["weekly_usage_used_basis_points"], 100.0);
+    if let Some(worker) = account["bound_worker_id"].as_str() {
+        output["boundWorkerId"] = json!(worker);
+    }
     dates(
         &mut output,
         account,

@@ -156,6 +156,7 @@ export async function protectModelProviderAccountCreate(
   const id = crypto.randomUUID();
   return encryptedModelProviderAccountCreateSchema.parse({
     id,
+    ...(input.boundWorkerId ? { boundWorkerId: input.boundWorkerId } : {}),
     protectedLabel: await protectProviderAccountLabel({
       accountId: id,
       label: input.label,

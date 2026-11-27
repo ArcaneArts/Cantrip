@@ -172,6 +172,15 @@ export async function testModelProviderConnection(
   );
 }
 
+export async function getClaudeCodeAccountStatus(
+  providerId: string,
+  accountId: string,
+) {
+  return request(
+    `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/claude-status`,
+  );
+}
+
 export async function listModelProviderAccounts(providerId: string) {
   return openModelProviderAccountWireList(
     await request(

@@ -45,6 +45,7 @@ export const providerSetupOptions = [
   providerSetupDefinition("openai-compatible"),
   providerSetupDefinition("chatgpt"),
   providerSetupDefinition("grok"),
+  providerSetupDefinition("claude-code"),
 ] as const satisfies readonly {
   id: ProviderSetupKind;
   label: string;
@@ -84,7 +85,8 @@ export function providerSetupUnavailableReason(
   ) {
     return null;
   }
-  const name = kind === "chatgpt" ? "ChatGPT" : "SuperGrok";
+  const name =
+    kind === "grok" ? "SuperGrok" : providerSetupDefinition(kind).name;
   return `A ${name} provider already exists. Add sign-ins to that provider instead.`;
 }
 

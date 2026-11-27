@@ -65,6 +65,63 @@ async fn execute(
             },
         );
     }
+    if request.uri().path().ends_with("/claude-status") {
+        let provider = &params["providerId"];
+        let account = &params["accountId"];
+        let Some(worker) = repository
+            .claude_account_worker(owner, provider, account, false)
+            .await?
+        else {
+            return Ok(error(404, "Claude Code account not found."));
+        };
+        return Ok(
+            match service
+                .workers
+                .commands
+                .request(
+                    &worker,
+                    crate::wire::value::json!({
+                        "type":"claude-code.auth.status",
+                        "accountId":account,
+                        "serverId":service.server_id,
+                    }),
+                    Some(std::time::Duration::from_secs(20)),
+                    None,
+                )
+                .await
+            {
+                Ok(Some(status)) => {
+                    let status = &status["status"];
+                    let observation = match status.as_str() {
+                        Some("signed-in") => "signed-in",
+                        Some("signed-out") => "signed-out",
+                        Some("unsupported-authentication") => "failed",
+                        _ => {
+                            return Ok(error(
+                                502,
+                                "Claude Code returned an invalid sign-in status.",
+                            ));
+                        }
+                    };
+                    repository
+                        .record_claude_account_status(
+                            owner,
+                            provider,
+                            account,
+                            &worker,
+                            observation,
+                        )
+                        .await?;
+                    super::json_response(
+                        StatusCode::OK,
+                        crate::wire::value::json!({"status":status}),
+                    )
+                }
+                Ok(None) => error(502, "Claude Code returned no sign-in status."),
+                Err(cause) => auth_failure(cause.into()),
+            },
+        );
+    }
     let reorder = request.uri().path().ends_with("/accounts/order");
     if method == Method::GET || method == Method::HEAD {
         return match repository
@@ -136,6 +193,41 @@ async fn execute(
         );
     }
     if method == Method::DELETE {
+        let provider = &params["providerId"];
+        let account = &params["accountId"];
+        if let Some(worker) = repository
+            .claude_account_worker(owner, provider, account, false)
+            .await?
+        {
+            let result = service
+                .workers
+                .commands
+                .request(
+                    &worker,
+                    crate::wire::value::json!({
+                        "type":"claude-code.auth.remove",
+                        "accountId":account,
+                        "serverId":service.server_id,
+                    }),
+                    Some(std::time::Duration::from_secs(45)),
+                    None,
+                )
+                .await;
+            match result {
+                Ok(Some(value)) if value["removed"] == true => {}
+                Ok(_) => {
+                    return Ok(error(
+                        502,
+                        "The worker could not remove this Claude Code account.",
+                    ));
+                }
+                Err(cause) => return Ok(auth_failure(cause.into())),
+            }
+            repository
+                .delete_provider_account(owner, provider, account)
+                .await?;
+            return Ok(no_content());
+        }
         return Ok(
             match service
                 .provider_accounts
@@ -233,4 +325,8 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/codex/auth/logout", post(handle))
         .route("/api/codex/auth/status", get(handle))
         .route("/api/codex/auth/device-login", post(handle))
+        .route(
+            "/api/settings/providers/{providerId}/accounts/{accountId}/claude-status",
+            get(handle),
+        )
 }

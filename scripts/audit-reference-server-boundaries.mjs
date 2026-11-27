@@ -128,7 +128,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "08ae093282f7451cc3b9ff34413133d5a8fc51ad8a91b9b2f20463aba8747477",
   workerCommands:
-    "c11b41698e004a3d3a2eef81ff9a3146ae57259a29795e034b0ce8c204d8ffa1",
+    "64e0da3c1e2daa0484c0ae30049c55823a103ed010867dbfd629a0ac327969e8",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3775,6 +3775,18 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "terminal.claude-code.open")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Owned account and operation identifiers open an ephemeral worker PTY. Its input and output use the encrypted terminal stream.",
+    };
+  if (["claude-code.auth.status", "claude-code.auth.remove"].includes(command))
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "Owned account and server identifiers select a worker-local profile. The worker returns only sign-in status or removal confirmation.",
+    };
   if (command === "chat.council-provider-retire")
     return {
       classification: "endpoint-protected",
