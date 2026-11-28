@@ -166,14 +166,14 @@ describe("worker network graph", () => {
       />,
     );
 
-    expect(markup).toContain("Localhost boundary");
+    expect(markup).toContain("This machine");
+    expect(markup).toContain("Across the network");
     expect(markup).toContain('data-network-node-id="worker:local-worker"');
     expect(markup).toContain('data-network-node-id="worker:remote-worker"');
     expect(markup).toContain('data-network-node-id="client:connected-phone"');
     expect(markup).not.toContain("signed-out-browser");
     expect(markup).toContain("1/2 workers online");
     expect(markup).toContain("2 connected clients");
-    expect(markup).toContain("Live server control paths");
     expect(markup).not.toContain("Workers remain isolated behind the server");
     expect(markup).toContain("data route unknown");
   });
@@ -190,12 +190,12 @@ describe("worker network graph", () => {
     expect(markup).toContain("LOCAL direct data");
   });
 
-  it("renders active RELAY and names the LOCAL fallback", () => {
+  it("renders active RELAY, names the LOCAL fallback, and rounds noisy latency", () => {
     const markup = graphMarkup([
       routeStatus({
         effectiveRoutes: ["relay"],
         fallbackReason: "local-unavailable",
-        latencyMs: 19,
+        latencyMs: 3.699999988079071,
         preferredRoute: "relay",
         routeChannelCounts: [
           { channelCount: 0, route: "local" },
@@ -209,7 +209,7 @@ describe("worker network graph", () => {
 
     expect(markup).toContain('data-worker-route="RELAY"');
     expect(markup).toContain("LOCAL unavailable");
-    expect(markup).toContain("2 channels · 19 ms");
+    expect(markup).toContain("2 channels · 3.7 ms");
     expect(markup).toContain("RELAY data through server");
   });
 
