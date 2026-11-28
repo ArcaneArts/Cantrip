@@ -174,7 +174,7 @@ describe("account usage settings", () => {
     });
 
     expect(markup).toContain("Storage measurement is stale");
-    expect(markup).toContain("older than two hours");
+    expect(markup).toContain("more than two hours ago");
   });
 
   it("renders a retryable current-usage error", () => {
@@ -203,7 +203,7 @@ describe("account usage settings", () => {
       );
     });
 
-    expect(markup).toContain("Logical server storage");
+    expect(markup).toContain("Server storage");
     expect(markup).toContain("Partial history");
     expect(markup).toContain("Storage history is unavailable");
   });

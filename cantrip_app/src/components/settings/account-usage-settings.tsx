@@ -9,6 +9,7 @@ import {
   ArrowUpFromLine,
   Database,
   HardDrive,
+  Info,
   Loader2,
   RefreshCw,
   Wifi,
@@ -62,31 +63,26 @@ function formatTimestamp(value: string | null): string {
 }
 
 function UsageMetric({
-  detail,
   icon,
   label,
   value,
 }: {
-  detail: string;
   icon: ReactNode;
   label: string;
   value: string;
 }) {
   return (
-    <div className="min-w-0 rounded-xl border bg-card/60 p-4">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="min-w-0">
+      <dt className="flex items-center gap-2 text-xs text-muted-foreground">
         {icon}
         <span>{label}</span>
-      </div>
-      <p
-        className="mt-3 truncate text-xl font-semibold tabular-nums"
+      </dt>
+      <dd
+        className="mt-1.5 truncate text-xl font-semibold tabular-nums"
         title={value}
       >
         {value}
-      </p>
-      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-        {detail}
-      </p>
+      </dd>
     </div>
   );
 }
@@ -134,14 +130,14 @@ function UsageHistoryChart({
 
   if (!series.length || !timestamps.length || maximum === 0n) {
     return (
-      <div className="grid h-44 place-items-center rounded-lg border bg-background/25 px-4 text-center text-xs text-muted-foreground">
+      <div className="grid h-44 place-items-center border-y px-4 text-center text-xs text-muted-foreground">
         No measured activity in this range yet.
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-background/25 p-2">
+    <div className="overflow-hidden border-y py-2">
       <svg
         aria-label={ariaLabel}
         className="h-44 w-full"
@@ -199,6 +195,55 @@ function UsageHistoryChart({
   );
 }
 
+function UsageStorageTable({
+  rows,
+  title,
+  countLabel,
+}: {
+  rows: { label: string; bytes: string; count: string }[];
+  title: string;
+  countLabel: string;
+}) {
+  return (
+    <section className="min-w-0">
+      <h2 className="border-b px-2 pb-2 text-sm font-semibold">{title}</h2>
+      {rows.length ? (
+        <table aria-label={title} className="w-full text-left text-xs">
+          <thead className="border-b text-muted-foreground">
+            <tr>
+              <th className="px-2 py-2 font-medium">Category</th>
+              <th className="px-2 py-2 text-right font-medium">{countLabel}</th>
+              <th className="px-2 py-2 text-right font-medium">Size</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map(({ label, bytes, count }) => (
+              <tr key={label}>
+                <th scope="row" className="px-2 py-2.5 font-medium">
+                  {label}
+                </th>
+                <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">
+                  {BigInt(count).toLocaleString()}
+                </td>
+                <td
+                  className="px-2 py-2.5 text-right tabular-nums"
+                  title={`${bytes} bytes`}
+                >
+                  {formatUsageBytes(bytes)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="px-2 py-4 text-xs text-muted-foreground">
+          No storage totals yet.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function StorageBreakdown({ usage }: { usage: AccountResourceUsage }) {
   const categories = [...usage.storage.server.categories].sort((left, right) =>
     BigInt(left.logicalBytes) === BigInt(right.logicalBytes)
@@ -209,13 +254,11 @@ function StorageBreakdown({ usage }: { usage: AccountResourceUsage }) {
   );
   const workerRows = [
     {
-      id: "sources",
       label: "Attachment sources",
       bytes: usage.storage.workerManaged.attachmentSources.logicalBytes,
       count: usage.storage.workerManaged.attachmentSources.objectCount,
     },
     {
-      id: "replicas",
       label: "Ready replicas",
       bytes: usage.storage.workerManaged.readyReplicas.logicalBytes,
       count: usage.storage.workerManaged.readyReplicas.objectCount,
@@ -223,71 +266,21 @@ function StorageBreakdown({ usage }: { usage: AccountResourceUsage }) {
   ];
 
   return (
-    <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-      <section className="min-w-0 rounded-xl border bg-card/60">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">Server storage by category</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Active logical PostgreSQL row bytes. Archived records still count
-            while retained.
-          </p>
-        </div>
-        {categories.length ? (
-          <div className="divide-y">
-            {categories.map((category) => (
-              <div
-                key={category.category}
-                className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-4 py-2.5 text-xs"
-              >
-                <span className="truncate font-medium">
-                  {storageCategoryLabel(category.category)}
-                </span>
-                <span
-                  className="tabular-nums"
-                  title={`${category.logicalBytes} bytes`}
-                >
-                  {formatUsageBytes(category.logicalBytes)}
-                </span>
-                <span className="text-muted-foreground">Logical rows</span>
-                <span className="tabular-nums text-muted-foreground">
-                  {BigInt(category.rowCount).toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-            No reconciled server rows yet.
-          </p>
-        )}
-      </section>
-
-      <section className="min-w-0 rounded-xl border bg-card/60">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">Worker-managed attachments</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Server-known logical estimates from attachment metadata.
-            Repositories, worktrees, and arbitrary worker files are not scanned.
-          </p>
-        </div>
-        <div className="divide-y">
-          {workerRows.map((row) => (
-            <div
-              key={row.id}
-              className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-4 py-2.5 text-xs"
-            >
-              <span className="truncate font-medium">{row.label}</span>
-              <span className="tabular-nums" title={`${row.bytes} bytes`}>
-                {formatUsageBytes(row.bytes)}
-              </span>
-              <span className="text-muted-foreground">Known objects</span>
-              <span className="tabular-nums text-muted-foreground">
-                {BigInt(row.count).toLocaleString()}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
+    <div className="grid min-w-0 gap-5 xl:grid-cols-2">
+      <UsageStorageTable
+        countLabel="Rows"
+        rows={categories.map(({ category, logicalBytes, rowCount }) => ({
+          label: storageCategoryLabel(category),
+          bytes: logicalBytes,
+          count: rowCount,
+        }))}
+        title="Server storage by category"
+      />
+      <UsageStorageTable
+        countLabel="Objects"
+        rows={workerRows}
+        title="Worker-managed attachments"
+      />
     </div>
   );
 }
@@ -314,44 +307,43 @@ function BandwidthBreakdown({ usage }: { usage: AccountResourceUsage }) {
   });
 
   return (
-    <section className="min-w-0 rounded-xl border bg-card/60">
-      <div className="border-b px-4 py-3">
-        <h2 className="text-sm font-semibold">Today’s server bandwidth</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Encoded application payload crossing server boundaries. Direct local
-          and WebRTC traffic is excluded.
-        </p>
-      </div>
+    <section className="min-w-0">
+      <h2 className="border-b px-2 pb-2 text-sm font-semibold">
+        Today’s server traffic
+      </h2>
       {sorted.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[32rem] text-left text-xs">
-            <thead className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
+          <table
+            aria-label="Today’s server traffic"
+            className="w-full text-left text-xs"
+          >
+            <thead className="border-b text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Channel</th>
-                <th className="px-4 py-2 text-right font-medium">Ingress</th>
-                <th className="px-4 py-2 text-right font-medium">Egress</th>
-                <th className="px-4 py-2 text-right font-medium">Operations</th>
+                <th className="px-2 py-2 font-medium">Channel</th>
+                <th className="px-2 py-2 text-right font-medium">Received</th>
+                <th className="px-2 py-2 text-right font-medium">Sent</th>
+                <th className="px-2 py-2 text-right font-medium">Operations</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {sorted.map(([channel, row]) => (
                 <tr key={channel}>
-                  <th className="px-4 py-2.5 font-medium">
+                  <th scope="row" className="px-2 py-2.5 font-medium">
                     {bandwidthChannelLabel(channel)}
                   </th>
                   <td
-                    className="px-4 py-2.5 text-right tabular-nums"
+                    className="px-2 py-2.5 text-right tabular-nums"
                     title={`${row.ingress} bytes`}
                   >
                     {formatUsageBytes(row.ingress)}
                   </td>
                   <td
-                    className="px-4 py-2.5 text-right tabular-nums"
+                    className="px-2 py-2.5 text-right tabular-nums"
                     title={`${row.egress} bytes`}
                   >
                     {formatUsageBytes(row.egress)}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                  <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">
                     {row.operations.toLocaleString()}
                   </td>
                 </tr>
@@ -360,8 +352,8 @@ function BandwidthBreakdown({ usage }: { usage: AccountResourceUsage }) {
           </table>
         </div>
       ) : (
-        <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-          No server bandwidth has been metered today.
+        <p className="px-2 py-4 text-xs text-muted-foreground">
+          No server traffic today.
         </p>
       )}
     </section>
@@ -445,13 +437,7 @@ export function AccountUsageSettings() {
   return (
     <div className="grid w-full gap-4 pb-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-base font-semibold">Account usage</h1>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-            Reconciled logical storage and metered application payload carried
-            by this Cantrip server.
-          </p>
-        </div>
+        <h1 className="text-base font-semibold">Account usage</h1>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="gap-1.5">
             {resourcesLive ? (
@@ -486,65 +472,55 @@ export function AccountUsageSettings() {
         </div>
       </header>
 
-      <InlineAlert title="Usage limits are not enforced">
-        These measurements are informational infrastructure for future limits.
-        They are not billing-grade totals and do not reject requests or reserve
-        storage.
-      </InlineAlert>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Info className="size-3.5 shrink-0" /> Usage limits are not enforced.
+      </p>
 
       {current.measurement.status === "stale" ? (
         <InlineAlert tone="warning" title="Storage measurement is stale">
-          The last successful storage reconciliation is older than two hours.
-          Bandwidth may continue updating independently.
+          Storage totals were last updated more than two hours ago.
         </InlineAlert>
       ) : current.measurement.status === "unavailable" ? (
-        <InlineAlert tone="warning" title="Storage baseline is not ready">
-          The server has not completed its first storage reconciliation. Storage
-          values are temporarily incomplete.
+        <InlineAlert tone="warning" title="Storage totals are pending">
+          The first server storage measurement is still pending.
         </InlineAlert>
       ) : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <dl
+        aria-label="Usage totals"
+        className="grid grid-cols-2 gap-x-5 gap-y-4 border-y px-2 py-4 md:grid-cols-4"
+      >
         <UsageMetric
-          detail={`${BigInt(current.storage.server.rowCount).toLocaleString()} retained rows`}
           icon={<Database className="size-3.5" />}
-          label="Logical server storage"
+          label="Server storage"
           value={formatUsageBytes(current.storage.server.logicalBytes)}
         />
         <UsageMetric
-          detail="Known attachment sources and ready replicas"
           icon={<HardDrive className="size-3.5" />}
-          label="Worker-managed attachments"
+          label="Attachments"
           value={formatUsageBytes(current.storage.workerManaged.logicalBytes)}
         />
         <UsageMetric
-          detail="Application payload received by the server today"
           icon={<ArrowDownToLine className="size-3.5" />}
-          label="Bandwidth ingress"
+          label="Data received today"
           value={formatUsageBytes(current.bandwidth.ingressBytes)}
         />
         <UsageMetric
-          detail="Application payload sent by the server today"
           icon={<ArrowUpFromLine className="size-3.5" />}
-          label="Bandwidth egress"
+          label="Data sent today"
           value={formatUsageBytes(current.bandwidth.egressBytes)}
         />
-      </section>
+      </dl>
 
       <StorageBreakdown usage={current} />
       <BandwidthBreakdown usage={current} />
 
-      <section className="rounded-xl border bg-card/60 p-4">
+      <section className="border-t px-2 pt-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <Activity className="size-4" /> History
             </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              UTC {window.resolution === "hour" ? "hourly" : "daily"} buckets.
-              Storage is a point-in-time state; bandwidth is summed within each
-              bucket.
-            </p>
           </div>
           <div
             aria-label="Usage history range"
@@ -586,7 +562,7 @@ export function AccountUsageSettings() {
             <h3 className="mb-2 text-xs font-medium">Storage history</h3>
             {historiesLoading && !storageHistory.data ? (
               <ContentLoading
-                className="h-44 min-h-0 rounded-lg border"
+                className="h-44 min-h-0 border-y"
                 label="Loading storage history…"
               />
             ) : (
@@ -600,7 +576,7 @@ export function AccountUsageSettings() {
             <h3 className="mb-2 text-xs font-medium">Bandwidth history</h3>
             {historiesLoading && !bandwidthHistory.data ? (
               <ContentLoading
-                className="h-44 min-h-0 rounded-lg border"
+                className="h-44 min-h-0 border-y"
                 label="Loading bandwidth history…"
               />
             ) : (
@@ -613,16 +589,30 @@ export function AccountUsageSettings() {
         </div>
       </section>
 
-      <footer className="grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
-        <span>Measured: {formatTimestamp(current.measurement.measuredAt)}</span>
-        <span className="sm:text-right">
-          Reconciled: {formatTimestamp(current.measurement.reconciledAt)}
-        </span>
-        <span>Storage basis: {current.measurement.basisVersion}</span>
-        <span className="sm:text-right">
-          Bandwidth updated: {formatTimestamp(current.bandwidth.measuredAt)}
-        </span>
-      </footer>
+      <details className="border-t px-2 pt-3 text-xs text-muted-foreground">
+        <summary className="w-fit cursor-pointer hover:text-foreground">
+          Measurement details
+        </summary>
+        <p className="mt-2">
+          Server storage includes retained records, including archived ones.
+          Attachment sizes are estimates. Data totals cover traffic through this
+          server. History uses{" "}
+          {window.resolution === "hour" ? "hourly" : "daily"} UTC totals for
+          traffic and snapshots for storage.
+        </p>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+          <dt>Storage measured</dt>
+          <dd>{formatTimestamp(current.measurement.measuredAt)}</dd>
+          <dt>Storage reconciled</dt>
+          <dd>{formatTimestamp(current.measurement.reconciledAt)}</dd>
+          <dt>Traffic measured</dt>
+          <dd>{formatTimestamp(current.bandwidth.measuredAt)}</dd>
+          <dt>Retained rows</dt>
+          <dd>{BigInt(current.storage.server.rowCount).toLocaleString()}</dd>
+          <dt>Storage basis</dt>
+          <dd>{current.measurement.basisVersion}</dd>
+        </dl>
+      </details>
     </div>
   );
 }

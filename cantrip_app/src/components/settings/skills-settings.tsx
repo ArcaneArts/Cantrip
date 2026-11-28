@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ContentLoading } from "@/components/ui/content-state";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
@@ -188,7 +189,15 @@ function SkillRows({
   );
 }
 
-export function SkillsSettings({ project }: { project?: ProjectSummary }) {
+export function SkillsSettings({
+  onOpenModels,
+  onOpenWorkers,
+  project,
+}: {
+  onOpenModels?(): void;
+  onOpenWorkers?(): void;
+  project?: ProjectSummary;
+}) {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
@@ -347,9 +356,6 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
   const currentWorker = (workers.data ?? []).find(
     (worker) => worker.workerId === workerId,
   );
-  const currentProvider = settings.data?.providers.find(
-    (provider) => provider.id === providerId,
-  );
   const canSave = Boolean(
     selectedSkill?.editable &&
     document.data &&
@@ -370,25 +376,64 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
   const visibleGlobalSkills = (inventory.data?.global ?? []).filter((item) =>
     skillMatchesSearch(item, search),
   );
+  const title = project ? "Project skills" : "Global skills";
+
+  if (!context) {
+    const queryError = workers.error ?? settings.error;
+    const needsWorker =
+      !workerId && workers.isSuccess && workers.data.length === 0;
+    const needsProvider = settings.data?.providers.length === 0;
+    return (
+      <div className="w-full space-y-4">
+        <h2 className="font-semibold">{title}</h2>
+        {queryError ? (
+          <div className="flex flex-wrap items-center gap-3 border-y py-3 text-sm">
+            <p className="text-destructive" role="alert">
+              {errorText(queryError)}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (workers.isError) void workers.refetch();
+                if (settings.isError) void settings.refetch();
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : needsWorker || needsProvider ? (
+          <div className="flex flex-wrap items-center gap-3 border-y py-3 text-sm">
+            <p className="text-muted-foreground">
+              {needsWorker
+                ? "Pair a worker to browse skills."
+                : "Add a model provider to browse skills."}
+            </p>
+            {needsWorker && onOpenWorkers ? (
+              <Button size="sm" variant="outline" onClick={onOpenWorkers}>
+                Open Workers
+              </Button>
+            ) : !needsWorker && onOpenModels ? (
+              <Button size="sm" variant="outline" onClick={onOpenModels}>
+                Open Models
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <ContentLoading label="Loading skill sources…" />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">
-            {project ? "Project skills" : "Global skills"}
-          </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Browse skill instructions and supporting files. Editable skills can
-            be updated here, and every discovered skill can be enabled or
-            disabled for the selected Codex account. Deleted skills are moved
-            into Cantrip recovery storage.
-          </p>
-        </div>
+        <h2 className="font-semibold">{title}</h2>
         <Button
           size="sm"
           variant="ghost"
-          disabled={!context || inventory.isFetching}
+          disabled={inventory.isFetching}
           onClick={() => void inventory.refetch()}
         >
           <RefreshCw
@@ -450,26 +495,19 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
         </label>
       </div>
 
-      {!workers.isLoading && !workerId ? (
-        <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
-          Add or connect a worker before browsing skills.
-        </p>
-      ) : null}
-      {!settings.isLoading && !providerId ? (
-        <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
-          Configure a model provider before browsing its Cantrip account skills.
-        </p>
-      ) : null}
       {currentWorker && !currentWorker.online ? (
         <p className="rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
           {currentWorker.name} is offline. Skill files become available when it
           reconnects.
         </p>
       ) : null}
-      {inventory.isError ? (
+      {inventory.isError && currentWorker?.online !== false ? (
         <p className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {errorText(inventory.error)}
         </p>
+      ) : null}
+      {inventory.isPending && currentWorker?.online !== false ? (
+        <ContentLoading label="Loading skills…" />
       ) : null}
       {inventory.data?.errors.length ? (
         <div className="rounded-lg bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
@@ -481,14 +519,14 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
         </div>
       ) : null}
 
-      {project ? (
+      {project && inventory.data ? (
         <section
           aria-labelledby="project-skill-list-title"
           className="space-y-2"
         >
           <div className="px-3">
             <h3 id="project-skill-list-title" className="text-sm font-semibold">
-              Project Skills
+              Project skills
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
               Loaded from this repository’s .agents/skills directory.
@@ -506,35 +544,25 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
         </section>
       ) : null}
 
-      <section
-        aria-labelledby="global-skill-list-title"
-        className={cn("space-y-2", project && "border-t pt-4")}
-      >
-        <div className="px-3">
-          <h3 id="global-skill-list-title" className="text-sm font-semibold">
-            Global Skills
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Available from {currentProvider?.name ?? "the selected provider"},
-            the worker user profile and Codex home, bundled Codex skills, and
-            administrator policy.
-          </p>
-        </div>
-        <SkillRows
-          items={visibleGlobalSkills}
-          emptyText={
-            search
-              ? `No global skills match “${searchQuery.trim()}”.`
-              : "No global skills were found for this worker and provider."
-          }
-          onOpen={openSkill}
-        />
-      </section>
-
-      <p className="pb-2 text-xs text-muted-foreground">
-        To install another personal skill, invoke $skill-installer in an agent
-        using the same worker and provider.
-      </p>
+      {inventory.data ? (
+        <section
+          aria-label="Global skills"
+          className={cn("space-y-2", project && "border-t pt-4")}
+        >
+          {project ? (
+            <h3 className="px-3 text-sm font-semibold">Global skills</h3>
+          ) : null}
+          <SkillRows
+            items={visibleGlobalSkills}
+            emptyText={
+              search
+                ? `No global skills match “${searchQuery.trim()}”.`
+                : "No global skills found."
+            }
+            onOpen={openSkill}
+          />
+        </section>
+      ) : null}
 
       <Dialog
         open={Boolean(selectedSkill)}
