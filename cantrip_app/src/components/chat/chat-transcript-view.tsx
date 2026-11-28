@@ -1,3 +1,4 @@
+import { isLanguageModelProfile } from "@cantrip/protocol";
 import {
   InferenceQueueNotice,
   useChatInferenceQueue,
@@ -59,6 +60,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipButton } from "@/components/ui/tooltip";
 import {
   EmptyState,
+  EmptyStateActions,
   EmptyStateContent,
   EmptyStateDescription,
   EmptyStateIcon,
@@ -233,6 +235,14 @@ export function ChatTranscriptView({
     viewTurnTrajectory,
     viewingAttachment,
   } = controller;
+  const councilNeedsModel =
+    capabilities.council &&
+    Boolean(settings) &&
+    (!selectedModel || !isLanguageModelProfile(selectedModel));
+  const councilModelSetup =
+    councilNeedsModel && !settings?.models.some(isLanguageModelProfile)
+      ? onConfigureModels
+      : undefined;
   const boundUsageRouteId =
     nativeModelSettings.binding?.modelRouteId ??
     runtimeSelection.data?.modelRouteId;
@@ -380,14 +390,32 @@ export function ChatTranscriptView({
                   <WandSparkles className="size-5" />
                 </EmptyStateIcon>
                 <EmptyStateTitle>
-                  {capabilities.context === "standalone"
-                    ? "Start a conversation"
-                    : "Start working"}
+                  {councilNeedsModel
+                    ? councilModelSetup
+                      ? "No models configured"
+                      : "Choose a model to start"
+                    : capabilities.context === "standalone"
+                      ? "Start a conversation"
+                      : "Start working"}
                 </EmptyStateTitle>
-                {capabilities.context === "standalone" ? (
+                {capabilities.context === "standalone" &&
+                !capabilities.council ? (
                   <EmptyStateDescription>
                     Attach files to give the conversation context.
                   </EmptyStateDescription>
+                ) : null}
+                {councilNeedsModel ? (
+                  <EmptyStateActions>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={
+                        councilModelSetup ?? (() => setSettingsPicker("model"))
+                      }
+                    >
+                      {councilModelSetup ? "Configure models" : "Select model"}
+                    </Button>
+                  </EmptyStateActions>
                 ) : null}
               </EmptyStateContent>
             </EmptyState>
@@ -1067,9 +1095,11 @@ export function ChatTranscriptView({
                               ? "Queue a prompt while paused…"
                               : chat.status === "running"
                                 ? "Queue a follow-up…"
-                                : capabilities.context === "standalone"
-                                  ? "Message Cantrip…"
-                                  : "Ask Cantrip to work on this repository…"
+                                : capabilities.council
+                                  ? `Message ${chat.title}…`
+                                  : capabilities.context === "standalone"
+                                    ? "Message Cantrip…"
+                                    : "Ask Cantrip to work on this repository…"
                   }
                   className={cn(
                     "relative max-h-48 min-h-10 w-full field-sizing-content resize-none overflow-y-auto bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground [scrollbar-gutter:stable]",

@@ -13,7 +13,7 @@ export function GitPanelSummary({
   const history = header.section === "history";
   const graph = header.section === "graph";
   const count = history
-    ? `${header.commitsLoaded.toLocaleString()} commits loaded`
+    ? `${header.commitsLoaded.toLocaleString()} ${header.commitsLoaded === 1 ? "commit" : "commits"} loaded`
     : graph
       ? `${header.graphNodes.toLocaleString()} repository nodes`
       : header.section === "actions"

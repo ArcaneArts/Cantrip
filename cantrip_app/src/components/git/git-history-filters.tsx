@@ -87,11 +87,6 @@ export function GitHistoryFilters({
             <X className="size-3" />
           </button>
         ))}
-        {activeFilters.length === 0 ? (
-          <span className="shrink-0 text-[10px] text-muted-foreground">
-            Click an author, branch, tag, or changed path to filter
-          </span>
-        ) : null}
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
