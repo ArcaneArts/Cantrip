@@ -33,7 +33,14 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +61,7 @@ import {
 } from "@/components/ui/dialog";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
+import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import { NativeSelect } from "@/components/ui/native-select";
 import { RunConfigurationFlutterDevicePicker } from "@/components/run/run-configuration-flutter-device-picker";
 import { RunConfigurationPathPicker } from "@/components/run/run-configuration-path-picker";
@@ -77,6 +85,38 @@ const fieldClassName = "grid gap-1.5 text-sm";
 const labelClassName = "text-xs font-medium text-muted-foreground";
 const textareaClassName =
   "min-h-20 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+const configurationTabs = [
+  { id: "command", label: "Command" },
+  { id: "environment", label: "Environment" },
+  { id: "lifecycle", label: "Lifecycle" },
+] as const;
+type ConfigurationTab = (typeof configurationTabs)[number]["id"];
+
+function issueTab(field: string): ConfigurationTab {
+  const root = field.split(".")[0];
+  if (root === "environment") return "environment";
+  if (
+    root === "beforeLaunch" ||
+    root === "options" ||
+    root === "stop" ||
+    root === "platformOverrides"
+  ) {
+    return "lifecycle";
+  }
+  return "command";
+}
+
+function FieldErrors({ id, messages }: { id?: string; messages: string[] }) {
+  if (messages.length === 0) return null;
+  return (
+    <div className="grid gap-1 text-xs text-destructive" id={id} role="alert">
+      {[...new Set(messages)].map((message) => (
+        <p key={message}>{message}</p>
+      ))}
+    </div>
+  );
+}
 
 type RunConfigurationEditorPatch = {
   [Field in keyof RunConfigurationFile]?: RunConfigurationFile[Field];
@@ -310,7 +350,7 @@ function SecretValueEditor({
   });
 
   return (
-    <div className="grid gap-2 rounded-md border bg-muted/20 p-3">
+    <div className="grid gap-2 border-t pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -486,14 +526,12 @@ function RunConfigurationCreationChooser({
         capability.provider === "shell"),
   );
   return (
-    <DialogContent className="max-w-3xl gap-4">
+    <DialogContent aria-describedby={undefined} className="max-w-3xl gap-4">
       <DialogHeader>
         <DialogTitle>New Run configuration</DialogTitle>
-        <DialogDescription>
-          Review a statically detected project target or start with a typed
-          blank configuration. Nothing is written until you save.
-          {destinationLabel ? ` Destination: ${destinationLabel}.` : ""}
-        </DialogDescription>
+        {destinationLabel ? (
+          <DialogDescription>{destinationLabel}</DialogDescription>
+        ) : null}
       </DialogHeader>
       {loading ? (
         <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -502,13 +540,7 @@ function RunConfigurationCreationChooser({
       ) : (
         <div className="grid gap-5">
           <section className="grid gap-3">
-            <div>
-              <h3 className="font-medium">Detected targets</h3>
-              <p className="text-xs text-muted-foreground">
-                Detection reads bounded project metadata and never executes
-                project code.
-              </p>
-            </div>
+            <h3 className="font-medium">Detected targets</h3>
             {candidates.length ? (
               <Command className="rounded-lg border">
                 <CommandInput placeholder="Search detected targets…" />
@@ -549,10 +581,9 @@ function RunConfigurationCreationChooser({
                 </CommandList>
               </Command>
             ) : (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                No typed project targets were detected. You can still create a
-                blank Dart, Flutter, Java, Node, Rust, or Shell configuration.
-              </div>
+              <p className="text-sm text-muted-foreground">
+                No project targets found.
+              </p>
             )}
           </section>
           <section className="grid gap-3">
@@ -847,6 +878,13 @@ export function RunConfigurationEditor({
   const [stage, setStage] = useState<"choose" | "edit">(
     creating ? "choose" : "edit",
   );
+  const editorId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [tab, setTab] = useState<ConfigurationTab>("command");
+  const [touchedFields, setTouchedFields] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [attemptedSave, setAttemptedSave] = useState(false);
   const [expectedRevision, setExpectedRevision] = useState<string | null>(
     entry?.revision ?? null,
   );
@@ -932,6 +970,36 @@ export function RunConfigurationEditor({
   const draftFingerprint = parsedDraft.success
     ? JSON.stringify(parsedDraft.document)
     : null;
+  const issues = parsedDraft.success ? [] : parsedDraft.issues;
+  const touchField = (field: string) =>
+    setTouchedFields((current) =>
+      current.has(field) ? current : new Set([...current, field]),
+    );
+  const fieldErrors = (field: string) =>
+    attemptedSave || touchedFields.has(field)
+      ? issues
+          .filter(
+            (issue) =>
+              issue.field === field || issue.field.startsWith(`${field}.`),
+          )
+          .map(({ message }) => message)
+      : [];
+  const resetFormView = () => {
+    setTab("command");
+    setAttemptedSave(false);
+    setTouchedFields(new Set());
+  };
+  const selectTab = (next: ConfigurationTab) => {
+    setTab(next);
+    if (next !== tab) formRef.current?.scrollTo(0, 0);
+  };
+  const showFirstIssue = () => {
+    const firstInvalidTab = configurationTabs.find(({ id }) =>
+      issues.some(({ field }) => issueTab(field) === id),
+    );
+    if (firstInvalidTab) selectTab(firstInvalidTab.id);
+    setAttemptedSave(true);
+  };
 
   useEffect(() => {
     if (
@@ -994,6 +1062,7 @@ export function RunConfigurationEditor({
     setConflictRevision(null);
     setTargetPickerOpen(false);
     setValidationDraft(null);
+    resetFormView();
     setStage(creating ? "choose" : "edit");
   };
 
@@ -1022,18 +1091,14 @@ export function RunConfigurationEditor({
     currentValidation?.effectiveCommand ?? effective.command;
   const save = useMutation({
     mutationFn: async (overwriteRevision?: string) => {
-      const parsed = parseRunConfigurationEditorDocument(
-        document,
-        platformOverrides,
-      );
-      if (!parsed.success) {
-        setErrors(parsed.errors);
+      if (!parsedDraft.success) {
+        showFirstIssue();
         return null;
       }
       setErrors([]);
       return saveRunConfiguration(projectId, {
         expectedRevision: overwriteRevision ?? expectedRevision,
-        document: parsed.document,
+        document: parsedDraft.document,
       });
     },
     onSuccess: (result) => {
@@ -1078,6 +1143,7 @@ export function RunConfigurationEditor({
     setConflictRevision(null);
     setTargetPickerOpen(false);
     setValidationDraft(null);
+    resetFormView();
     setStage("edit");
   };
 
@@ -1110,8 +1176,11 @@ export function RunConfigurationEditor({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl gap-4">
-        <DialogHeader>
+      <DialogContent
+        aria-describedby={undefined}
+        className="flex h-[min(34rem,calc(100svh-2rem))] max-w-2xl flex-col gap-0 overflow-hidden p-0"
+      >
+        <DialogHeader className="shrink-0 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2">
             {creating ? (
               <Button
@@ -1128,13 +1197,27 @@ export function RunConfigurationEditor({
               {entry ? "Edit Run configuration" : "New Run configuration"}
             </DialogTitle>
           </div>
-          <DialogDescription>
-            Shared as{" "}
-            <code>.cantrip/run-configurations/{document.id}.json</code>.
-            {destinationLabel ? ` Destination: ${destinationLabel}.` : ""}
-          </DialogDescription>
         </DialogHeader>
-        <form className="grid gap-5" onSubmit={submit}>
+        <NavigationTabBar
+          activeTab={tab}
+          ariaLabel="Run configuration settings"
+          className="border-b px-4 sm:px-6"
+          onTabChange={selectTab}
+          panelIdPrefix={editorId}
+          tabs={configurationTabs.map((item) => ({
+            ...item,
+            attention:
+              attemptedSave &&
+              issues.some(({ field }) => issueTab(field) === item.id),
+          }))}
+        />
+        <form
+          className="grid min-h-0 min-w-0 flex-1 content-start gap-4 overflow-y-auto px-4 py-4 sm:px-6"
+          id={`${editorId}-form`}
+          noValidate
+          ref={formRef}
+          onSubmit={submit}
+        >
           {externallyDeleted ? (
             <InlineAlert tone="error" title="The shared file was deleted">
               Close this editor and create a new Run configuration if you want
@@ -1155,17 +1238,33 @@ export function RunConfigurationEditor({
               </Button>
             </InlineAlert>
           ) : null}
-          <section className="grid gap-3 rounded-lg border p-4">
-            <h3 className="font-medium">Configuration</h3>
+          <section
+            aria-labelledby={`${editorId}-command-tab`}
+            className={cn("grid min-w-0 gap-4", tab !== "command" && "hidden")}
+            id={`${editorId}-command-panel`}
+            role="tabpanel"
+          >
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={fieldClassName}>
                 <span className={labelClassName}>Name</span>
                 <Input
+                  aria-describedby={
+                    fieldErrors("name").length
+                      ? `${editorId}-name-error`
+                      : undefined
+                  }
+                  aria-invalid={fieldErrors("name").length > 0}
+                  aria-label="Name"
                   autoFocus
                   value={document.name}
+                  onBlur={() => touchField("name")}
                   onChange={(event) =>
                     patchDocument({ name: event.target.value })
                   }
+                />
+                <FieldErrors
+                  id={`${editorId}-name-error`}
+                  messages={fieldErrors("name")}
                 />
               </label>
               <label className={fieldClassName}>
@@ -1184,9 +1283,16 @@ export function RunConfigurationEditor({
                 <div className="flex gap-2">
                   <Input
                     aria-label="Start directory"
+                    aria-describedby={
+                      fieldErrors("workingDirectory").length
+                        ? `${editorId}-directory-error`
+                        : undefined
+                    }
+                    aria-invalid={fieldErrors("workingDirectory").length > 0}
                     className="min-w-0 flex-1 font-mono"
                     placeholder="."
                     value={document.workingDirectory}
+                    onBlur={() => touchField("workingDirectory")}
                     onChange={(event) =>
                       patchDocument({ workingDirectory: event.target.value })
                     }
@@ -1201,6 +1307,10 @@ export function RunConfigurationEditor({
                     purpose="directory"
                   />
                 </div>
+                <FieldErrors
+                  id={`${editorId}-directory-error`}
+                  messages={fieldErrors("workingDirectory")}
+                />
               </div>
               <label className={fieldClassName}>
                 <span className={labelClassName}>Target type</span>
@@ -1291,16 +1401,12 @@ export function RunConfigurationEditor({
               </label>
             </div>
             {document.provider !== "shell" ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className={labelClassName}>Worker-backed target</div>
+                  <div className={labelClassName}>Target</div>
                   <code className="block truncate text-sm">
                     {runConfigurationTargetLabel(document)}
                   </code>
-                  <p className="text-xs text-muted-foreground">
-                    Browse static project discovery to update the target, start
-                    directory, and detected provider defaults.
-                  </p>
                 </div>
                 <RunConfigurationTargetPicker
                   candidates={targetDetection.data?.candidates ?? []}
@@ -1328,9 +1434,16 @@ export function RunConfigurationEditor({
                 <label className={fieldClassName}>
                   <span className={labelClassName}>Run command</span>
                   <Input
+                    aria-describedby={
+                      fieldErrors("target").length
+                        ? `${editorId}-target-error`
+                        : undefined
+                    }
+                    aria-invalid={fieldErrors("target").length > 0}
                     className="font-mono"
                     placeholder="pnpm dev"
                     value={document.target.command}
+                    onBlur={() => touchField("target")}
                     onChange={(event) =>
                       patchDocument({
                         target: {
@@ -1348,9 +1461,16 @@ export function RunConfigurationEditor({
                     <div className="flex gap-2">
                       <Input
                         aria-label="Script path"
+                        aria-describedby={
+                          fieldErrors("target").length
+                            ? `${editorId}-target-error`
+                            : undefined
+                        }
+                        aria-invalid={fieldErrors("target").length > 0}
                         className="min-w-0 flex-1 font-mono"
                         placeholder="tool/run.sh"
                         value={document.target.path}
+                        onBlur={() => touchField("target")}
                         onChange={(event) =>
                           setDocument((current) =>
                             current.provider === "shell" &&
@@ -1419,6 +1539,7 @@ export function RunConfigurationEditor({
                     className="font-mono"
                     placeholder="start"
                     value={document.target.script}
+                    onBlur={() => touchField("target")}
                     onChange={(event) =>
                       setDocument((current) =>
                         current.provider === "node" &&
@@ -1444,6 +1565,7 @@ export function RunConfigurationEditor({
                       className="min-w-0 flex-1 font-mono"
                       placeholder="src/index.js"
                       value={document.target.path}
+                      onBlur={() => touchField("target")}
                       onChange={(event) =>
                         setDocument((current) =>
                           current.provider === "node" &&
@@ -1500,32 +1622,57 @@ export function RunConfigurationEditor({
             ) : (
               <RustTargetEditor document={document} onChange={setDocument} />
             )}
-            <label className={fieldClassName}>
-              <span className={labelClassName}>
-                Command override (optional)
-              </span>
+            <FieldErrors
+              id={`${editorId}-target-error`}
+              messages={fieldErrors("target")}
+            />
+            <div
+              className="grid gap-2 border-t pt-3"
+              onBlur={() => touchField("arguments")}
+            >
+              <h3 className={labelClassName}>Arguments</h3>
+              <StringListEditor
+                addLabel="Add argument"
+                values={document.arguments}
+                onChange={(arguments_) =>
+                  patchDocument({ arguments: arguments_ })
+                }
+              />
+              <FieldErrors messages={fieldErrors("arguments")} />
+            </div>
+            <details
+              open={
+                Boolean(document.commandOverride) ||
+                fieldErrors("commandOverride").length > 0
+              }
+            >
+              <summary className="w-fit cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                Command override{effective.overridden ? " (active)" : ""}
+              </summary>
               <Input
-                className="font-mono"
+                aria-label="Command override"
+                className="mt-2 font-mono"
                 placeholder="Replace the provider command"
                 value={document.commandOverride ?? ""}
+                onBlur={() => touchField("commandOverride")}
                 onChange={(event) =>
                   patchDocument({ commandOverride: event.target.value || null })
                 }
               />
-            </label>
-            <div className="grid gap-1 rounded-md border bg-muted/30 p-3">
-              <span className={labelClassName}>
-                Effective command
-                {effective.overridden ? " · override active" : ""}
-              </span>
-              <code className="break-all text-sm">
-                {effectiveCommand ||
-                  "Complete the target to preview the command"}
-              </code>
-            </div>
+              <FieldErrors messages={fieldErrors("commandOverride")} />
+            </details>
+            {effectiveCommand &&
+            (document.provider !== "shell" ||
+              document.target.kind !== "command" ||
+              effective.overridden ||
+              document.arguments.length > 0) ? (
+              <div className="grid gap-1">
+                <span className={labelClassName}>Effective command</span>
+                <code className="break-all text-sm">{effectiveCommand}</code>
+              </div>
+            ) : null}
             <RunConfigurationValidationStatus
               error={validationIsCurrent ? providerValidation.error : null}
-              localErrors={parsedDraft.success ? [] : parsedDraft.errors}
               onRediscover={
                 document.provider === "shell"
                   ? null
@@ -1540,24 +1687,15 @@ export function RunConfigurationEditor({
             />
           </section>
 
-          <section className="grid gap-3 rounded-lg border p-4">
-            <h3 className="font-medium">Arguments</h3>
-            <StringListEditor
-              addLabel="Add argument"
-              values={document.arguments}
-              onChange={(arguments_) =>
-                patchDocument({ arguments: arguments_ })
-              }
-            />
-          </section>
-
-          <section className="grid gap-4 rounded-lg border p-4">
-            <div>
-              <h3 className="font-medium">Environment</h3>
-              <p className="text-xs text-muted-foreground">
-                Values are read fresh for every launch.
-              </p>
-            </div>
+          <section
+            aria-labelledby={`${editorId}-environment-tab`}
+            className={cn(
+              "grid min-w-0 gap-4",
+              tab !== "environment" && "hidden",
+            )}
+            id={`${editorId}-environment-panel`}
+            role="tabpanel"
+          >
             <label className="flex items-center gap-2 text-sm">
               <input
                 checked={document.environment.includeCodexEnvironment}
@@ -1571,15 +1709,12 @@ export function RunConfigurationEditor({
                 }
                 type="checkbox"
               />
-              Inject the current Codex environment when this runs
+              Include Codex environment
             </label>
-            <p className="text-xs text-muted-foreground">
-              Cantrip resolves Primary&apos;s
-              {" .codex/environments/environment.toml "}
-              immediately before each generation. If it is absent, this source
-              is a no-op.
-            </p>
-            <div className="grid gap-2">
+            <div
+              className="grid gap-2 border-t pt-3"
+              onBlur={() => touchField("environment.files")}
+            >
               <span className={labelClassName}>Environment files</span>
               <StringListEditor
                 addLabel="Add environment file"
@@ -1595,8 +1730,12 @@ export function RunConfigurationEditor({
                   })
                 }
               />
+              <FieldErrors messages={fieldErrors("environment.files")} />
             </div>
-            <div className="grid gap-2">
+            <div
+              className="grid gap-2 border-t pt-3"
+              onBlur={() => touchField("environment.variables")}
+            >
               <span className={labelClassName}>Variables</span>
               <EnvironmentRows
                 kind="variable"
@@ -1607,8 +1746,12 @@ export function RunConfigurationEditor({
                   })
                 }
               />
+              <FieldErrors messages={fieldErrors("environment.variables")} />
             </div>
-            <div className="grid gap-2">
+            <div
+              className="grid gap-2 border-t pt-3"
+              onBlur={() => touchField("environment.secrets")}
+            >
               <span className={labelClassName}>Secret references</span>
               <EnvironmentRows
                 kind="secret"
@@ -1633,6 +1776,7 @@ export function RunConfigurationEditor({
                   })
                 }
               />
+              <FieldErrors messages={fieldErrors("environment.secrets")} />
               {storedSecrets.error ? (
                 <p className="text-xs text-destructive" role="alert">
                   Stored secret availability could not be loaded.
@@ -1655,19 +1799,25 @@ export function RunConfigurationEditor({
             </div>
           </section>
 
-          <section className="grid gap-3 rounded-lg border p-4">
-            <div>
-              <h3 className="font-medium">Before launch</h3>
-              <p className="text-xs text-muted-foreground">
-                Steps run in order before the main process.
-              </p>
-            </div>
+          <section
+            aria-labelledby={`${editorId}-lifecycle-tab`}
+            className={cn(
+              "grid min-w-0 gap-3",
+              tab !== "lifecycle" && "hidden",
+            )}
+            id={`${editorId}-lifecycle-panel`}
+            role="tabpanel"
+          >
+            <h3 className="font-medium">Before launch</h3>
             {document.beforeLaunch.map((step, index) => (
               <div
-                className="grid grid-cols-[8rem_1fr_1fr_auto] gap-2"
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)_auto]"
                 key={index}
+                onBlur={() => touchField("beforeLaunch")}
               >
                 <NativeSelect
+                  aria-label={`Before-launch step type ${index + 1}`}
+                  className="col-span-full sm:col-span-1"
                   value={step.kind}
                   onChange={(event) =>
                     patchDocument({
@@ -1705,6 +1855,8 @@ export function RunConfigurationEditor({
                   ) : null}
                 </NativeSelect>
                 <Input
+                  aria-label={`Before-launch ${step.kind === "command" ? "command" : "task"} ${index + 1}`}
+                  className="col-span-full sm:col-span-1"
                   value={step.kind === "command" ? step.command : step.task}
                   placeholder={
                     step.kind === "command" ? "Command" : "Task name"
@@ -1797,6 +1949,7 @@ export function RunConfigurationEditor({
                 </Button>
               </div>
             ))}
+            <FieldErrors messages={fieldErrors("beforeLaunch")} />
             <Button
               className="w-fit"
               onClick={() =>
@@ -1813,11 +1966,16 @@ export function RunConfigurationEditor({
             >
               <Plus className="size-3.5" /> Add step
             </Button>
-          </section>
-
-          <section className="grid gap-3 rounded-lg border p-4">
-            <h3 className="font-medium">Execution options</h3>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <h3 className="mt-1 border-t pt-3 font-medium">
+              Execution options
+            </h3>
+            <div
+              className="grid gap-3 sm:grid-cols-3"
+              onBlur={() => {
+                touchField("options");
+                touchField("stop");
+              }}
+            >
               {document.provider === "shell" ? (
                 <>
                   <label className={fieldClassName}>
@@ -2304,6 +2462,9 @@ export function RunConfigurationEditor({
                 />
               </label>
             </div>
+            <FieldErrors
+              messages={[...fieldErrors("options"), ...fieldErrors("stop")]}
+            />
             {document.provider === "node" ? (
               <div className="grid gap-2">
                 <span className={labelClassName}>Runtime arguments</span>
@@ -2447,18 +2608,38 @@ export function RunConfigurationEditor({
                 />
               </div>
             ) : null}
-            <label className={fieldClassName}>
-              <span className={labelClassName}>
-                Platform overrides (advanced JSON)
-              </span>
-              <textarea
-                className={textareaClassName}
-                value={platformOverrides}
-                onChange={(event) => setPlatformOverrides(event.target.value)}
-              />
-            </label>
+            <details
+              className="border-t pt-3"
+              open={fieldErrors("platformOverrides").length > 0}
+            >
+              <summary className="w-fit cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                Platform overrides
+              </summary>
+              <label className={cn(fieldClassName, "mt-2")}>
+                <span className={labelClassName}>Override JSON</span>
+                <textarea
+                  className={textareaClassName}
+                  value={platformOverrides}
+                  onBlur={() => touchField("platformOverrides")}
+                  onChange={(event) => setPlatformOverrides(event.target.value)}
+                />
+              </label>
+              <FieldErrors messages={fieldErrors("platformOverrides")} />
+            </details>
+            <details className="border-t pt-3 text-sm text-muted-foreground">
+              <summary className="w-fit cursor-pointer hover:text-foreground">
+                Shared file
+              </summary>
+              <code className="mt-2 block break-all text-xs">
+                .cantrip/run-configurations/{document.id}.json
+              </code>
+              {destinationLabel ? (
+                <p className="mt-1 text-xs">{destinationLabel}</p>
+              ) : null}
+            </details>
           </section>
-
+        </form>
+        <div className="max-h-32 shrink-0 space-y-2 overflow-y-auto px-4 empty:hidden sm:px-6">
           {errors.length ? (
             <InlineAlert tone="error" title="Could not save">
               <ul className="list-disc pl-4">
@@ -2469,35 +2650,36 @@ export function RunConfigurationEditor({
             </InlineAlert>
           ) : null}
           {save.error ? <InlineAlert error={save.error} tone="error" /> : null}
-          <DialogFooter>
-            <Button
-              onClick={() => onOpenChange(false)}
-              type="button"
-              variant="outline"
-            >
-              Cancel
-            </Button>
-            {conflictRevision ? (
-              <Button
-                disabled={externallyDeleted}
-                onClick={() => save.mutate(conflictRevision)}
-                pending={save.isPending}
-                type="button"
-                variant="destructive"
-              >
-                Overwrite latest revision
-              </Button>
-            ) : null}
+        </div>
+        <DialogFooter className="shrink-0 flex-row flex-wrap items-center justify-end border-t px-4 py-3 sm:px-6">
+          <Button
+            onClick={() => onOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          {conflictRevision ? (
             <Button
               disabled={externallyDeleted}
+              onClick={() => save.mutate(conflictRevision)}
               pending={save.isPending}
-              pendingLabel="Saving…"
-              type="submit"
+              type="button"
+              variant="destructive"
             >
-              Save configuration
+              Overwrite latest revision
             </Button>
-          </DialogFooter>
-        </form>
+          ) : null}
+          <Button
+            disabled={externallyDeleted}
+            form={`${editorId}-form`}
+            pending={save.isPending}
+            pendingLabel="Saving…"
+            type="submit"
+          >
+            Save configuration
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

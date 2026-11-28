@@ -587,7 +587,12 @@ export function parseRunConfigurationEditorDocument(
   } catch {
     return {
       success: false as const,
-      errors: ["Platform overrides must be valid JSON."],
+      issues: [
+        {
+          field: "platformOverrides",
+          message: "Enter valid JSON for platform overrides.",
+        },
+      ],
     };
   }
   const parsed = runConfigurationFileSchema.safeParse({
@@ -597,10 +602,13 @@ export function parseRunConfigurationEditorDocument(
   if (!parsed.success) {
     return {
       success: false as const,
-      errors: parsed.error.issues.map(
-        ({ message, path }) =>
-          `${path.length ? `${path.join(".")}: ` : ""}${message}`,
-      ),
+      issues: parsed.error.issues.map(({ message, path }) => ({
+        field: path.map(String).join("."),
+        message:
+          path[0] === "name" && !document.name.trim()
+            ? "Enter a name."
+            : message,
+      })),
     };
   }
   return { success: true as const, document: parsed.data };

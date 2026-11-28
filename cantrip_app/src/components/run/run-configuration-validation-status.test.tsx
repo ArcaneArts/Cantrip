@@ -14,26 +14,10 @@ const validation: RunConfigurationProviderValidation = {
 };
 
 describe("Run configuration validation status", () => {
-  it("shows local and pending states without stale worker results", () => {
-    const local = renderToStaticMarkup(
-      <RunConfigurationValidationStatus
-        error={null}
-        localErrors={[
-          "target.name: String must contain at least 1 character(s)",
-        ]}
-        onRediscover={null}
-        onRetry={vi.fn()}
-        pending={false}
-        validation={null}
-      />,
-    );
-    expect(local).toContain("Finish the draft to validate it on Primary");
-    expect(local).toContain("target.name");
-
+  it("shows when worker validation is pending", () => {
     const pending = renderToStaticMarkup(
       <RunConfigurationValidationStatus
         error={null}
-        localErrors={[]}
         onRediscover={null}
         onRetry={vi.fn()}
         pending
@@ -47,7 +31,6 @@ describe("Run configuration validation status", () => {
     const html = renderToStaticMarkup(
       <RunConfigurationValidationStatus
         error={null}
-        localErrors={[]}
         onRediscover={null}
         onRetry={vi.fn()}
         pending={false}
@@ -62,7 +45,6 @@ describe("Run configuration validation status", () => {
     const html = renderToStaticMarkup(
       <RunConfigurationValidationStatus
         error={null}
-        localErrors={[]}
         onRediscover={vi.fn()}
         onRetry={vi.fn()}
         pending={false}
@@ -93,7 +75,6 @@ describe("Run configuration validation status", () => {
     const html = renderToStaticMarkup(
       <RunConfigurationValidationStatus
         error={new Error("offline")}
-        localErrors={[]}
         onRediscover={null}
         onRetry={vi.fn()}
         pending={false}
