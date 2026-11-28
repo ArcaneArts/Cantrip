@@ -31,14 +31,20 @@ let container: HTMLDivElement;
 let client: QueryClient;
 const toggleConsole = vi.fn();
 const toggleInspect = vi.fn();
-function panels(focused = "one") {
+function panels(focused = "one", taskChatId?: string) {
   return (
     <QueryClientProvider client={client}>
       <main data-focused={focused}>
         {["one", "two"].map((id) => (
           <PanelToolbar aria-label={`Agent ${id}`} key={id}>
             <AgentPanelActions
-              chat={{ id, title: id } as ChatSummary}
+              chat={
+                {
+                  id,
+                  title: id,
+                  experience: id === taskChatId ? "task" : "agent",
+                } as ChatSummary
+              }
               consoleActive={id === "one"}
               consolePending={false}
               inspectActive={false}
@@ -87,6 +93,14 @@ afterEach(async () => {
 });
 
 describe("Agent panel controls", () => {
+  it("omits the linked console for Task chats and keeps their inspection controls", async () => {
+    await act(async () => root.render(panels("two", "two")));
+    expect(button("two", "Show Codex console")).toBeNull();
+    expect(button("two", "Open agent Inspect")).not.toBeNull();
+    expect(button("two", "Inspect Codex customizations")).not.toBeNull();
+    expect(button("one", "Show agent")).not.toBeNull();
+  });
+
   it("keeps both panels' controls available and routes actions to their own chat", async () => {
     expect(button("one", "Show agent")).not.toBeNull();
     expect(button("two", "Show Codex console")).not.toBeNull();

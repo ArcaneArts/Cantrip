@@ -53,7 +53,7 @@ interface ChatHeaderActions {
     problem: boolean;
     show(): void;
   };
-  toggleConsole(): void;
+  toggleConsole?(): void;
   toggleInspect(): void;
 }
 
@@ -357,25 +357,27 @@ export function ContentHeaderActions({
             <WandSparkles className="size-4" />
             <span className="sr-only">Inspect Codex customizations</span>
           </TooltipButton>
-          <TooltipButton
-            size="icon"
-            variant="ghost"
-            aria-pressed={chat.consoleActive}
-            disabled={!chat.consoleActive && chat.consolePending}
-            onClick={chat.toggleConsole}
-            tooltip={chat.consoleActive ? "Show agent" : "Show Codex console"}
-          >
-            {chat.consoleActive ? (
-              <Bot className="size-4" />
-            ) : chat.consolePending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <SquareTerminal className="size-4" />
-            )}
-            <span className="sr-only">
-              {chat.consoleActive ? "Show agent" : "Show Codex console"}
-            </span>
-          </TooltipButton>
+          {chat.toggleConsole ? (
+            <TooltipButton
+              size="icon"
+              variant="ghost"
+              aria-pressed={chat.consoleActive}
+              disabled={!chat.consoleActive && chat.consolePending}
+              onClick={chat.toggleConsole}
+              tooltip={chat.consoleActive ? "Show agent" : "Show Codex console"}
+            >
+              {chat.consoleActive ? (
+                <Bot className="size-4" />
+              ) : chat.consolePending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <SquareTerminal className="size-4" />
+              )}
+              <span className="sr-only">
+                {chat.consoleActive ? "Show agent" : "Show Codex console"}
+              </span>
+            </TooltipButton>
+          ) : null}
           <TooltipButton
             size="icon"
             variant="ghost"
