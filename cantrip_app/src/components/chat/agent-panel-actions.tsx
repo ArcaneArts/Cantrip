@@ -63,7 +63,8 @@ export function AgentPanelActions({
           consolePending,
           inspectActive,
           inspectCustomizations: () => setCustomizationsOpen(true),
-          toggleConsole: onToggleConsole,
+          toggleConsole:
+            chat.experience === "task" ? undefined : onToggleConsole,
           toggleInspect: onToggleInspect,
           relocation: {
             active: Boolean(active),
