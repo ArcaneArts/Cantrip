@@ -630,6 +630,19 @@ export function GitHistoryView({
   const gitResourcesLive = useAppLiveStatus() === "live";
   const compactLayout = useCompactLayout();
   const narrowViewport = useNarrowViewport();
+  const [historyViewport, setHistoryViewport] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [historyWidth, setHistoryWidth] = useState(0);
+  useEffect(() => {
+    if (!historyViewport) return;
+    const measure = () => setHistoryWidth(historyViewport.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(historyViewport);
+    return () => observer.disconnect();
+  }, [historyViewport]);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [internalSection, setInternalSection] = useState<GitViewSection>(view);
   const section = activeSection ?? internalSection;
@@ -1361,8 +1374,12 @@ export function GitHistoryView({
     [graph.rows],
   );
   const graphWidth = Math.max(42, graph.maxLanes * 16 + 12);
-  const graphGeometry = gitHistoryGraphGeometry(narrowViewport);
   const graphAreaWidth = Math.min(260, Math.max(160, graphWidth + 126));
+  // Match the four column minima and the row's horizontal padding.
+  const wideHistoryMinWidth = graphAreaWidth + 320 + 150 + 82 + 32;
+  const compactRows =
+    historyWidth > 0 ? historyWidth < wideHistoryMinWidth : narrowViewport;
+  const graphGeometry = gitHistoryGraphGeometry(compactRows);
   const historyColumns = `${graphAreaWidth}px minmax(320px, 1fr) 150px 82px`;
   const firstPage = history.data?.pages[0];
   const loadedInbox = useMemo<GithubInboxList | undefined>(() => {
@@ -1904,7 +1921,11 @@ export function GitHistoryView({
           dataSlot="git-history-content"
           guttered
         >
-          <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+          <div
+            className="min-h-0 min-w-0 flex-1 overflow-auto"
+            data-slot="git-history-scroll"
+            ref={setHistoryViewport}
+          >
             {!selectedWorktree ? (
               <div className="grid min-h-64 place-items-center text-sm text-muted-foreground">
                 This Git tab no longer has a worktree selection.
@@ -1941,10 +1962,13 @@ export function GitHistoryView({
                 </div>
               </div>
             ) : (
-              <div className="min-w-0 py-2 text-xs md:min-w-[760px]">
+              <div
+                className="group/history-rows min-w-0 py-2 text-xs"
+                data-history-layout={compactRows ? "compact" : "wide"}
+              >
                 <div
                   data-slot="table-header-surface"
-                  className="sticky top-0 z-10 hidden h-7 items-center border-b bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur md:grid"
+                  className="sticky top-0 z-10 hidden h-7 items-center border-b bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur group-data-[history-layout=wide]/history-rows:grid"
                   style={{ gridTemplateColumns: historyColumns }}
                 >
                   <div className="flex items-center gap-1">
@@ -2006,13 +2030,13 @@ export function GitHistoryView({
                         type="button"
                         data-high-contrast-row
                         className={cn(
-                          "grid min-h-16 w-full items-center gap-x-2 border-b border-border/50 bg-muted/35 px-3 py-2 text-left hover:bg-muted/65 md:h-8 md:min-h-0 md:gap-x-0 md:border-0 md:px-4 md:py-0",
+                          "grid min-h-16 w-full items-center gap-x-2 border-b border-border/50 bg-muted/35 px-3 py-2 text-left hover:bg-muted/65 group-data-[history-layout=wide]/history-rows:h-8 group-data-[history-layout=wide]/history-rows:min-h-0 group-data-[history-layout=wide]/history-rows:gap-x-0 group-data-[history-layout=wide]/history-rows:border-0 group-data-[history-layout=wide]/history-rows:px-4 group-data-[history-layout=wide]/history-rows:py-0",
                           selected &&
                             "bg-amber-500/[0.08] shadow-[inset_2px_0_0_0_rgb(245_158_11)]",
                         )}
                         style={{
                           gridTemplateColumns: gitHistoryRowColumns(
-                            narrowViewport,
+                            compactRows,
                             graphWidth,
                             historyColumns,
                           ),
@@ -2023,7 +2047,7 @@ export function GitHistoryView({
                         }}
                         title={`Open ${worktree.name} staged and unstaged changes`}
                       >
-                        <div className="relative h-full min-w-0 overflow-hidden md:h-8 md:overflow-visible">
+                        <div className="relative h-full min-w-0 overflow-hidden group-data-[history-layout=wide]/history-rows:h-8 group-data-[history-layout=wide]/history-rows:overflow-visible">
                           <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
                             <WorktreeWipGraph
                               color={row.nodeColor}
@@ -2035,14 +2059,14 @@ export function GitHistoryView({
                               geometry={graphGeometry}
                               lane={row.lane}
                               width={
-                                narrowViewport
+                                compactRows
                                   ? Math.min(graphWidth, 64)
                                   : graphWidth
                               }
                             />
                           </div>
                           <div
-                            className="absolute inset-y-0 z-[2] hidden min-w-0 items-center overflow-hidden pr-1 md:flex"
+                            className="absolute inset-y-0 z-[2] hidden min-w-0 items-center overflow-hidden pr-1 group-data-[history-layout=wide]/history-rows:flex"
                             style={{
                               left: Math.max(28, graphWidth - 4),
                               width: Math.max(
@@ -2056,11 +2080,11 @@ export function GitHistoryView({
                             </span>
                           </div>
                         </div>
-                        <div className="min-w-0 pr-2 md:pr-4">
-                          <span className="block truncate text-[10px] text-muted-foreground md:hidden">
+                        <div className="min-w-0 pr-2 group-data-[history-layout=wide]/history-rows:pr-4">
+                          <span className="block truncate text-[10px] text-muted-foreground group-data-[history-layout=wide]/history-rows:hidden">
                             {worktree.name}
                           </span>
-                          <div className="mt-1 flex min-w-0 items-center gap-2 md:mt-0">
+                          <div className="mt-1 flex min-w-0 items-center gap-2 group-data-[history-layout=wide]/history-rows:mt-0">
                             <FileDiff className="size-3.5 shrink-0 text-amber-500" />
                             <span className="truncate font-medium">
                               {rowStatus.files.length} working{" "}
@@ -2069,18 +2093,18 @@ export function GitHistoryView({
                                 : "changes"}
                             </span>
                             {unstaged ? (
-                              <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400 md:text-xs">
+                              <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400 group-data-[history-layout=wide]/history-rows:text-xs">
                                 {unstaged} unstaged
                               </span>
                             ) : null}
                             {staged ? (
-                              <span className="shrink-0 text-[10px] text-emerald-600 dark:text-emerald-400 md:text-xs">
+                              <span className="shrink-0 text-[10px] text-emerald-600 dark:text-emerald-400 group-data-[history-layout=wide]/history-rows:text-xs">
                                 {staged} staged
                               </span>
                             ) : null}
                           </div>
                         </div>
-                        <span className="hidden truncate text-muted-foreground md:block">
+                        <span className="hidden truncate text-muted-foreground group-data-[history-layout=wide]/history-rows:block">
                           {boundChats.length
                             ? boundChats.map(({ title }) => title).join(", ")
                             : worktree.origin}
@@ -2093,7 +2117,7 @@ export function GitHistoryView({
                   }
                   const row = displayRow.graph;
                   const day = row.commit.authoredAt.slice(0, 10);
-                  const visibleRefCount = narrowViewport ? 1 : 2;
+                  const visibleRefCount = compactRows ? 1 : 2;
                   const selectedHead = displayRow.worktrees.some(
                     ({ id }) => id === worktreeId,
                   );
@@ -2101,6 +2125,44 @@ export function GitHistoryView({
                     displayRows[index - 1]?.kind === "wip" &&
                     displayRows[index - 1]?.graph.commit.hash ===
                       row.commit.hash;
+                  const worktreeMarkers = [...displayRow.worktrees]
+                    .sort(
+                      (left, right) =>
+                        Number(right.id === worktreeId) -
+                        Number(left.id === worktreeId),
+                    )
+                    .map((worktree) => {
+                      const boundChats = chats.filter(
+                        ({ activeWorktreeId }) =>
+                          activeWorktreeId === worktree.id,
+                      );
+                      return (
+                        <HistoryWorktreeMarker
+                          key={worktree.id}
+                          worktree={worktree}
+                          worker={workers.find(
+                            ({ workerId }) => workerId === worktree.workerId,
+                          )}
+                          status={statuses[worktree.id]}
+                          boundChats={boundChats}
+                          selected={worktree.id === worktreeId}
+                          onSelect={() => onSelectWorktree(worktree.id)}
+                          onOpenChat={(chatId) =>
+                            chatId
+                              ? onOpenChat(chatId)
+                              : onCreateChat(worktree.id)
+                          }
+                          onOpenTerminal={() => onCreateTerminal(worktree.id)}
+                          onOpenExplorer={() => onCreateExplorer(worktree.id)}
+                          onOpenHistory={() => onCreateHistory(worktree.id)}
+                          onLockToggle={() => lockWorktree.mutate(worktree)}
+                          onRemove={() => {
+                            setForceRemove(false);
+                            setRemoveTarget(worktree);
+                          }}
+                        />
+                      );
+                    });
                   return (
                     <GitCommitContextMenu
                       key={row.commit.hash}
@@ -2121,14 +2183,14 @@ export function GitHistoryView({
                         data-high-contrast-row
                         data-current={row.commit.isHead}
                         className={cn(
-                          "grid min-h-16 w-full items-center gap-x-2 border-b border-border/50 px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 md:h-8 md:min-h-0 md:gap-x-0 md:px-4 md:py-0",
+                          "grid min-h-16 w-full items-center gap-x-2 border-b border-border/50 px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 group-data-[history-layout=wide]/history-rows:h-8 group-data-[history-layout=wide]/history-rows:min-h-0 group-data-[history-layout=wide]/history-rows:gap-x-0 group-data-[history-layout=wide]/history-rows:px-4 group-data-[history-layout=wide]/history-rows:py-0",
                           selectedHead &&
                             "bg-cyan-500/[0.07] shadow-[inset_2px_0_0_0_rgb(6_182_212)]",
                           selectedCommit === row.commit.hash && "bg-muted/70",
                         )}
                         style={{
                           gridTemplateColumns: gitHistoryRowColumns(
-                            narrowViewport,
+                            compactRows,
                             graphWidth,
                             historyColumns,
                           ),
@@ -2147,87 +2209,35 @@ export function GitHistoryView({
                           openCommitDialog(row.commit.hash);
                         }}
                       >
-                        <div className="relative h-full min-w-0 overflow-hidden md:h-8 md:overflow-visible">
+                        <div className="relative h-full min-w-0 overflow-hidden group-data-[history-layout=wide]/history-rows:h-8 group-data-[history-layout=wide]/history-rows:overflow-visible">
                           <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
                             <CommitGraph
                               geometry={graphGeometry}
                               row={row}
                               width={
-                                narrowViewport
+                                compactRows
                                   ? Math.min(graphWidth, 64)
                                   : graphWidth
                               }
                               connectFromTop={connectsFromWip}
                             />
                           </div>
-                          {displayRow.worktrees.length ? (
+                          {!compactRows && worktreeMarkers.length ? (
                             <div
-                              className="absolute inset-y-0 right-0 z-[2] flex min-w-0 items-center justify-end gap-0.5 overflow-hidden pr-1 md:right-auto md:justify-start"
-                              style={
-                                narrowViewport
-                                  ? undefined
-                                  : {
-                                      left: Math.max(28, graphWidth - 4),
-                                      width: Math.max(
-                                        48,
-                                        graphAreaWidth - graphWidth + 4,
-                                      ),
-                                    }
-                              }
+                              className="absolute inset-y-0 z-[2] flex min-w-0 items-center gap-0.5 overflow-hidden pr-1"
+                              style={{
+                                left: Math.max(28, graphWidth - 4),
+                                width: Math.max(
+                                  48,
+                                  graphAreaWidth - graphWidth + 4,
+                                ),
+                              }}
                             >
-                              {[...displayRow.worktrees]
-                                .sort(
-                                  (left, right) =>
-                                    Number(right.id === worktreeId) -
-                                    Number(left.id === worktreeId),
-                                )
-                                .map((worktree) => {
-                                  const boundChats = chats.filter(
-                                    ({ activeWorktreeId }) =>
-                                      activeWorktreeId === worktree.id,
-                                  );
-                                  return (
-                                    <HistoryWorktreeMarker
-                                      key={worktree.id}
-                                      worktree={worktree}
-                                      worker={workers.find(
-                                        ({ workerId }) =>
-                                          workerId === worktree.workerId,
-                                      )}
-                                      status={statuses[worktree.id]}
-                                      boundChats={boundChats}
-                                      selected={worktree.id === worktreeId}
-                                      onSelect={() =>
-                                        onSelectWorktree(worktree.id)
-                                      }
-                                      onOpenChat={(chatId) =>
-                                        chatId
-                                          ? onOpenChat(chatId)
-                                          : onCreateChat(worktree.id)
-                                      }
-                                      onOpenTerminal={() =>
-                                        onCreateTerminal(worktree.id)
-                                      }
-                                      onOpenExplorer={() =>
-                                        onCreateExplorer(worktree.id)
-                                      }
-                                      onOpenHistory={() =>
-                                        onCreateHistory(worktree.id)
-                                      }
-                                      onLockToggle={() =>
-                                        lockWorktree.mutate(worktree)
-                                      }
-                                      onRemove={() => {
-                                        setForceRemove(false);
-                                        setRemoveTarget(worktree);
-                                      }}
-                                    />
-                                  );
-                                })}
+                              {worktreeMarkers}
                             </div>
                           ) : null}
                         </div>
-                        <div className="min-w-0 pr-2 md:flex md:items-center md:gap-2 md:pr-4">
+                        <div className="min-w-0 pr-2 group-data-[history-layout=wide]/history-rows:flex group-data-[history-layout=wide]/history-rows:items-center group-data-[history-layout=wide]/history-rows:gap-2 group-data-[history-layout=wide]/history-rows:pr-4">
                           <div className="flex min-w-0 items-center gap-2">
                             <button
                               type="button"
@@ -2325,11 +2335,11 @@ export function GitHistoryView({
                             <span className="truncate font-medium">
                               {row.commit.subject}
                             </span>
-                            <code className="hidden shrink-0 text-[10px] text-muted-foreground/70 md:inline">
+                            <code className="hidden shrink-0 text-[10px] text-muted-foreground/70 group-data-[history-layout=wide]/history-rows:inline">
                               {row.commit.shortHash}
                             </code>
                           </div>
-                          <div className="mt-1 flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground md:hidden">
+                          <div className="mt-1 flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground group-data-[history-layout=wide]/history-rows:hidden">
                             <button
                               type="button"
                               className="min-w-0 truncate hover:underline"
@@ -2345,11 +2355,16 @@ export function GitHistoryView({
                             <code className="shrink-0">
                               {row.commit.shortHash}
                             </code>
+                            {compactRows && worktreeMarkers.length ? (
+                              <div className="flex min-w-0 items-center gap-1 overflow-x-auto px-0.5 py-0.5">
+                                {worktreeMarkers}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                         <button
                           type="button"
-                          className="hidden truncate text-left text-muted-foreground hover:underline md:block"
+                          className="hidden truncate text-left text-muted-foreground hover:underline group-data-[history-layout=wide]/history-rows:block"
                           onClick={() =>
                             applyHistoryFilters({
                               author: row.commit.authorEmail,
