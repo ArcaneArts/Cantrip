@@ -55,11 +55,20 @@ describe("Shell Run configuration editor model", () => {
     );
     expect(parseShellRunConfigurationEditorDocument(document, "{")).toEqual({
       success: false,
-      errors: ["Platform overrides must be valid JSON."],
+      issues: [
+        {
+          field: "platformOverrides",
+          message: "Enter valid JSON for platform overrides.",
+        },
+      ],
     });
     const parsed = parseShellRunConfigurationEditorDocument(document, "{}");
     expect(parsed.success).toBe(false);
-    if (!parsed.success) expect(parsed.errors.join(" ")).toContain("name");
+    if (!parsed.success)
+      expect(parsed.issues).toContainEqual({
+        field: "name",
+        message: "Enter a name.",
+      });
   });
 
   it("builds structured Node package and entrypoint commands", () => {

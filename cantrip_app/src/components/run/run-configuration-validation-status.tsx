@@ -24,38 +24,20 @@ function platformLabel(
 
 export function RunConfigurationValidationStatus({
   error,
-  localErrors,
   onRediscover,
   onRetry,
   pending,
   validation,
 }: {
   error: unknown;
-  localErrors: string[];
   onRediscover: (() => void) | null;
   onRetry(): void;
   pending: boolean;
   validation: RunConfigurationProviderValidation | null;
 }) {
-  if (localErrors.length > 0) {
-    return (
-      <div className="grid gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
-        <div className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-300">
-          <TriangleAlert className="size-4 shrink-0" />
-          Finish the draft to validate it on Primary
-        </div>
-        <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-          {localErrors.slice(0, 5).map((message) => (
-            <li key={message}>{message}</li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
   if (pending) {
     return (
-      <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
         Validating this draft on Primary…
       </div>
@@ -87,7 +69,7 @@ export function RunConfigurationValidationStatus({
   );
   if (validation.valid && warnings.length === 0) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300">
+      <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300">
         <CheckCircle2 className="size-4 shrink-0" />
         Validated on Primary for {platformLabel(validation.platform)}
       </div>
