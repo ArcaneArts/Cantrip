@@ -1190,6 +1190,7 @@ export function SettingsPage({
     workerId: worker?.workerId ?? null,
   });
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [providerSignInStep, setProviderSignInStep] = useState(false);
   const [analyticsProvider, setAnalyticsProvider] =
     useState<ModelProviderSummary | null>(null);
   const [editingProvider, setEditingProvider] =
@@ -1418,6 +1419,7 @@ export function SettingsPage({
         setBaseUrl(provider.baseUrl);
         setSelectedAccountId(provider.accounts[0]?.id ?? null);
         setAccountLabelDraft(provider.accounts[0]?.label ?? "");
+        setProviderSignInStep(true);
         return;
       }
       setProviderDialogOpen(false);
@@ -1658,6 +1660,7 @@ export function SettingsPage({
     beginCodexLogin.reset();
     signOutCodex.reset();
     consumeRateLimitReset.reset();
+    setProviderSignInStep(false);
     setEditingProvider(provider);
     setProviderName(
       provider?.name ??
@@ -2523,229 +2526,227 @@ export function SettingsPage({
       />
 
       <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>
-        <DialogContent className="sm:max-w-3xl lg:max-w-4xl">
+        <DialogContent
+          aria-describedby={undefined}
+          className={
+            editingProvider && !providerSignInStep ? "sm:max-w-2xl" : "max-w-md"
+          }
+        >
           <form onSubmit={submitProvider} className="grid gap-5">
             <DialogHeader>
               <DialogTitle>
-                {editingProvider
-                  ? "Edit provider"
-                  : `Add ${providerSetupDefaults(providerSetup).name} provider`}
+                {providerSignInStep
+                  ? `Connect ${authProviderName}`
+                  : editingProvider
+                    ? "Edit provider"
+                    : `Add ${providerSetupDefaults(providerSetup).name} provider`}
               </DialogTitle>
-              <DialogDescription>
-                Configure an API endpoint or a subscription account used through
-                Codex.
-              </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Provider name">
-                <input
-                  required
-                  autoFocus
-                  value={providerName}
-                  onChange={(event) => setProviderName(event.target.value)}
-                  className={inputClass}
-                  placeholder="My Ollama"
-                />
-              </Field>
-              <Field label="Provider type">
-                <NativeSelect
-                  value={providerSetup}
-                  onChange={(event) => {
-                    const setup = event.target.value as ProviderSetupKind;
-                    const preset = providerSetupDefaults(setup);
-                    if (
-                      providerSetupUnavailableReason(
-                        preset.kind,
-                        settings.data?.providers ?? [],
-                        editingProvider?.id,
-                      )
-                    )
-                      return;
-                    setProviderSetup(setup);
-                    setProviderKind(preset.kind);
-                    if (setup !== "openai-compatible" || !editingProvider) {
-                      setBaseUrl(preset.baseUrl);
-                    }
-                    if (
-                      !providerName.trim() ||
-                      (!editingProvider &&
-                        providerName ===
-                          providerInstanceName(
-                            providerSetupDefaults(providerSetup).name,
-                            settings.data?.providers ?? [],
-                          ))
-                    ) {
-                      setProviderName(
-                        providerInstanceName(
-                          preset.name,
-                          settings.data?.providers ?? [],
-                        ),
-                      );
-                    }
-                  }}
-                  className={inputClass}
-                >
-                  {providerSetupOptions.map((setup) => {
-                    const unavailableReason = providerSetupUnavailableReason(
-                      setup.kind,
-                      settings.data?.providers ?? [],
-                      editingProvider?.id,
-                    );
-                    return (
-                      <option
-                        key={setup.id}
-                        value={setup.id}
-                        disabled={Boolean(unavailableReason)}
-                      >
-                        {setup.label}
-                        {unavailableReason ? " (already added)" : ""}
-                      </option>
-                    );
-                  })}
-                </NativeSelect>
-              </Field>
-              <Field label="Maximum concurrent inference">
-                <div className="space-y-1.5">
-                  <input
-                    required
-                    type="number"
-                    min={1}
-                    max={2_147_483_647}
-                    step={1}
-                    value={providerInferenceLimit}
-                    onChange={(event) =>
-                      setProviderInferenceLimit(event.target.value)
-                    }
-                    className={inputClass}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Shared by all models, accounts, and projects on each worker.
-                    Additional turns queue automatically. Each worker has its
-                    own limit.
-                  </p>
-                </div>
-              </Field>
-              {providerKind === "claude-code" ? (
-                <p className="text-sm text-muted-foreground">
-                  Add Claude subscription accounts from this provider’s Models
-                  tab. Each account is available on the worker where you sign
-                  in.
-                </p>
-              ) : !isAccountProviderKind(providerKind) &&
-                providerSetup !== "zai" ? (
-                <Field label="Base URL">
-                  <div className="space-y-1.5">
+            {!providerSignInStep ? (
+              <>
+                <div className="grid gap-4">
+                  <Field label="Provider name">
                     <input
                       required
-                      type="url"
-                      value={baseUrl}
-                      onChange={(event) => {
-                        setBaseUrl(event.target.value);
-                        if (
-                          providerKind === "openai-compatible" &&
-                          providerSetup !== "openai-compatible"
-                        ) {
-                          setProviderSetup("openai-compatible");
-                          setProviderKind("openai-compatible");
-                        }
-                      }}
+                      autoFocus
+                      value={providerName}
+                      onChange={(event) => setProviderName(event.target.value)}
                       className={inputClass}
-                      placeholder="https://openrouter.ai/api/v1"
+                      placeholder={providerSetupDefaults(providerSetup).name}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Choose a preset above or edit its API root. Cantrip adds
-                      the Responses endpoint.
-                    </p>
-                  </div>
-                </Field>
-              ) : isAccountProviderKind(providerKind) ? (
-                <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-                  Cantrip stores each {accountProviderName(providerKind)}
-                  sign-in securely on the server and makes it available to every
-                  compatible worker.
-                </div>
-              ) : (
-                <div className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Responses endpoint</span>
-                  <div className="rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
-                    {ZAI_CODING_PLAN_BASE_URL}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Uses Z.ai Coding Plan quota through Codex. Obtain an{" "}
-                    <a
-                      className="underline underline-offset-2 hover:text-foreground"
-                      href="https://z.ai/manage-apikey/apikey-list"
-                      rel="noreferrer"
-                      target="_blank"
+                  </Field>
+                  {providerKind === "claude-code" ||
+                  isAccountProviderKind(providerKind) ? null : providerSetup !==
+                    "zai" ? (
+                    <Field label="Base URL">
+                      <div className="space-y-1.5">
+                        <input
+                          required
+                          type="url"
+                          value={baseUrl}
+                          onChange={(event) => setBaseUrl(event.target.value)}
+                          className={inputClass}
+                          placeholder={
+                            providerSetupDefaults(providerSetup).baseUrl
+                          }
+                        />
+                      </div>
+                    </Field>
+                  ) : (
+                    <div className="grid gap-1.5 text-sm">
+                      <span className="font-medium">Responses endpoint</span>
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
+                        {ZAI_CODING_PLAN_BASE_URL}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Uses Z.ai Coding Plan quota through Codex. Obtain an{" "}
+                        <a
+                          className="underline underline-offset-2 hover:text-foreground"
+                          href="https://z.ai/manage-apikey/apikey-list"
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Individual Plan key
+                        </a>{" "}
+                        or a{" "}
+                        <a
+                          className="underline underline-offset-2 hover:text-foreground"
+                          href="https://z.ai/manage-apikey/coding-plan/team/my-plan"
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Team Plan key
+                        </a>
+                        . Team Plan keys are separate from other Z.ai API keys.
+                      </p>
+                    </div>
+                  )}
+                  {providerKind !== "claude-code" &&
+                  !isAccountProviderKind(providerKind) ? (
+                    <Field
+                      label={
+                        providerSetup === "zai"
+                          ? "Coding Plan API key"
+                          : "API key (optional)"
+                      }
                     >
-                      Individual Plan key
-                    </a>{" "}
-                    or a{" "}
-                    <a
-                      className="underline underline-offset-2 hover:text-foreground"
-                      href="https://z.ai/manage-apikey/coding-plan/team/my-plan"
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Team Plan key
-                    </a>
-                    . Team Plan keys are separate from other Z.ai API keys.
-                  </p>
+                      <input
+                        type="password"
+                        required={
+                          providerSetup === "zai" &&
+                          editingProvider?.hasApiKey !== true
+                        }
+                        value={apiKey}
+                        disabled={removeApiKey}
+                        onChange={(event) => setApiKey(event.target.value)}
+                        className={inputClass}
+                        autoComplete="off"
+                        placeholder={
+                          editingProvider?.hasApiKey
+                            ? "Leave blank to keep saved key"
+                            : "Leave blank for an unauthenticated endpoint"
+                        }
+                      />
+                    </Field>
+                  ) : null}
                 </div>
-              )}
-              {providerKind !== "claude-code" &&
-              !isAccountProviderKind(providerKind) ? (
-                <Field
-                  label={
-                    providerSetup === "zai"
-                      ? "Coding Plan API key"
-                      : "API key (optional)"
-                  }
-                >
-                  <input
-                    type="password"
-                    required={
-                      providerSetup === "zai" &&
-                      editingProvider?.hasApiKey !== true
-                    }
-                    value={apiKey}
-                    disabled={removeApiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    className={inputClass}
-                    autoComplete="off"
-                    placeholder={
-                      editingProvider?.hasApiKey
-                        ? "Leave blank to keep saved key"
-                        : "Leave blank for an unauthenticated endpoint"
-                    }
-                  />
-                </Field>
-              ) : null}
-            </div>
-            {providerKind !== "claude-code" &&
-            !isAccountProviderKind(providerKind) &&
-            editingProvider?.hasApiKey ? (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={removeApiKey}
-                  onChange={(event) => setRemoveApiKey(event.target.checked)}
-                />
-                Remove the saved API key
-              </label>
+                {providerKind !== "claude-code" &&
+                !isAccountProviderKind(providerKind) &&
+                editingProvider?.hasApiKey ? (
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={removeApiKey}
+                      onChange={(event) =>
+                        setRemoveApiKey(event.target.checked)
+                      }
+                    />
+                    Remove the saved API key
+                  </label>
+                ) : null}
+                <details className="border-t pt-3">
+                  <summary className="w-fit cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                    Advanced
+                  </summary>
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    {editingProvider ? (
+                      <Field label="Provider type">
+                        <NativeSelect
+                          value={providerSetup}
+                          onChange={(event) => {
+                            const setup = event.target
+                              .value as ProviderSetupKind;
+                            const preset = providerSetupDefaults(setup);
+                            if (
+                              providerSetupUnavailableReason(
+                                preset.kind,
+                                settings.data?.providers ?? [],
+                                editingProvider?.id,
+                              )
+                            )
+                              return;
+                            setProviderSetup(setup);
+                            setProviderKind(preset.kind);
+                            if (setup !== "openai-compatible") {
+                              setBaseUrl(preset.baseUrl);
+                            }
+                            if (!providerName.trim()) {
+                              setProviderName(
+                                providerInstanceName(
+                                  preset.name,
+                                  settings.data?.providers ?? [],
+                                ),
+                              );
+                            }
+                          }}
+                          className={inputClass}
+                        >
+                          {providerSetupOptions.map((setup) => {
+                            const unavailableReason =
+                              providerSetupUnavailableReason(
+                                setup.kind,
+                                settings.data?.providers ?? [],
+                                editingProvider?.id,
+                              );
+                            return (
+                              <option
+                                key={setup.id}
+                                value={setup.id}
+                                disabled={Boolean(unavailableReason)}
+                              >
+                                {setup.label}
+                                {unavailableReason ? " (already added)" : ""}
+                              </option>
+                            );
+                          })}
+                        </NativeSelect>
+                      </Field>
+                    ) : null}
+                    <Field label="Maximum concurrent inference">
+                      <div className="space-y-1.5">
+                        <input
+                          required
+                          type="number"
+                          min={1}
+                          max={2_147_483_647}
+                          step={1}
+                          value={providerInferenceLimit}
+                          onChange={(event) =>
+                            setProviderInferenceLimit(event.target.value)
+                          }
+                          className={inputClass}
+                          onInvalid={(event) =>
+                            event.currentTarget
+                              .closest("details")
+                              ?.setAttribute("open", "")
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Concurrent requests allowed per worker.
+                        </p>
+                      </div>
+                    </Field>
+                  </div>
+                </details>
+              </>
             ) : null}
-            {providerKind !== "claude-code" &&
+            {editingProvider &&
+            providerKind !== "claude-code" &&
             !isAccountProviderKind(providerKind) ? (
               <div className="flex flex-col gap-3 border-y py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Connection test</p>
-                  <p className="text-xs text-muted-foreground">
-                    Runs a tiny request through an online worker and bundled
-                    Codex using a saved model route.
-                    {providerSetup === "zai"
-                      ? " This uses a very small amount of Coding Plan quota."
-                      : null}
-                  </p>
+                  {!connectionChangesSaved ||
+                  !worker ||
+                  providerSetup === "zai" ? (
+                    <p className="text-xs text-muted-foreground">
+                      {!connectionChangesSaved
+                        ? "Save connection changes before testing."
+                        : !worker
+                          ? "Connect a worker to test."
+                          : "Uses a small amount of Coding Plan quota."}
+                    </p>
+                  ) : null}
                   {visibleConnectionTestResult ? (
                     <p
                       className={`mt-1 text-xs ${visibleConnectionTestResult.ok ? "text-emerald-500" : "text-destructive"}`}
@@ -2792,7 +2793,7 @@ export function SettingsPage({
                 </Button>
               </div>
             ) : null}
-            {accountProvider ? (
+            {accountProvider && !providerSignInStep ? (
               <div className="grid gap-3 border-y py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -2875,13 +2876,10 @@ export function SettingsPage({
                 ) : null}
               </div>
             ) : null}
-            {isAccountProviderKind(providerKind) ? (
-              !accountProvider || !selectedAccount ? (
-                <p className="border-y py-3 text-sm text-muted-foreground">
-                  Add this provider to continue to{" "}
-                  {accountProviderName(providerKind)} device sign-in.
-                </p>
-              ) : codexAuth.isLoading ? (
+            {accountProvider &&
+            selectedAccount &&
+            isAccountProviderKind(providerKind) ? (
+              codexAuth.isLoading ? (
                 <div className="flex items-center gap-2 border-y py-3 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Checking{" "}
                   {authProviderName} authentication…
@@ -3025,11 +3023,7 @@ export function SettingsPage({
                 </div>
               ) : !worker ? (
                 <div className="grid gap-1 border-y py-3 text-sm text-muted-foreground">
-                  <p>
-                    Connect a worker to start {authProviderName} device
-                    authorization. Once connected, the account will be usable
-                    from every compatible worker.
-                  </p>
+                  <p>Connect a worker to get a sign-in code.</p>
                   {codexAuth.data?.loginError ? (
                     <p className="text-amber-500">
                       {codexAuth.data.loginError}
@@ -3039,11 +3033,10 @@ export function SettingsPage({
               ) : (
                 <div className="grid gap-3 border-y py-3">
                   <p className="text-xs text-muted-foreground">
-                    {worker.name} will run device authorization only. The
-                    completed account is stored on the server and shared with
-                    every compatible worker.
+                    Sign in with a device code from {worker.name}.
                   </p>
                   <Button
+                    autoFocus={providerSignInStep}
                     type="button"
                     className="w-fit"
                     disabled={
@@ -3162,20 +3155,26 @@ export function SettingsPage({
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline">
-                  Cancel
+                  {providerSignInStep ? "Done" : "Cancel"}
                 </Button>
               </DialogClose>
-              <Button
-                type="submit"
-                disabled={
-                  saveProvider.isPending || Boolean(providerUnavailableReason)
-                }
-              >
-                {saveProvider.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : null}
-                {editingProvider ? "Save changes" : "Add provider"}
-              </Button>
+              {!providerSignInStep ? (
+                <Button
+                  type="submit"
+                  disabled={
+                    saveProvider.isPending || Boolean(providerUnavailableReason)
+                  }
+                >
+                  {saveProvider.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : null}
+                  {editingProvider
+                    ? "Save changes"
+                    : isAccountProviderKind(providerKind)
+                      ? `Continue to ${accountProviderName(providerKind)} sign-in`
+                      : "Add provider"}
+                </Button>
+              ) : null}
             </DialogFooter>
           </form>
         </DialogContent>
