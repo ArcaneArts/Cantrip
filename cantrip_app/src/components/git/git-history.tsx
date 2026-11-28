@@ -1589,19 +1589,17 @@ export function GitHistoryView({
               else setSection(next);
             }}
           />
-        ) : (
+        ) : section !== "history" ? (
           <span className="shrink-0 font-medium">
-            {section === "history"
-              ? "History"
-              : section === "graph"
-                ? "Graph"
-                : section === "actions"
-                  ? "Actions"
-                  : section === "prs"
-                    ? "Pull Requests"
-                    : "Issues"}
+            {section === "graph"
+              ? "Graph"
+              : section === "actions"
+                ? "Actions"
+                : section === "prs"
+                  ? "Pull Requests"
+                  : "Issues"}
           </span>
-        )}
+        ) : null}
 
         <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1">
           {section === "history" || section === "graph" ? (
@@ -2370,18 +2368,18 @@ export function GitHistoryView({
                     </GitCommitContextMenu>
                   );
                 })}
-                <div
-                  ref={loadMoreRef}
-                  className="grid h-12 place-items-center text-xs text-muted-foreground"
-                >
-                  {history.isFetchingNextPage ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : history.hasNextPage ? (
-                    "Scroll to load more"
-                  ) : (
-                    `All ${commits.length} commits loaded`
-                  )}
-                </div>
+                {history.hasNextPage || history.isFetchingNextPage ? (
+                  <div
+                    ref={loadMoreRef}
+                    className="grid h-12 place-items-center text-xs text-muted-foreground"
+                  >
+                    {history.isFetchingNextPage ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      "Scroll to load more"
+                    )}
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

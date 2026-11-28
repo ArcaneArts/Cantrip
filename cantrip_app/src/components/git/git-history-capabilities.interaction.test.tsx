@@ -628,6 +628,6 @@ describe("History panel context", () => {
     expect(summary.textContent).toContain("ArcaneArts/Cantrip");
     expect(summary.textContent).toContain("main");
     expect(summary.textContent).toContain(head.slice(0, 8));
-    expect(summary.textContent).toContain("1 commits loaded");
+    expect(summary.textContent).toContain("1 commit loaded");
   });
 });
