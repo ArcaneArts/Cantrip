@@ -110,7 +110,7 @@ const TASK_AUTOSAVE_DELAY_MS = 700;
 export const TASK_DRAFT_FOOTER_CLASS_NAME =
   "cantrip-task-draft-footer shrink-0 border-t bg-background/95 px-3 py-2 backdrop-blur sm:px-6 sm:py-3";
 export const TASK_DRAFT_OPTIONS_CLASS_NAME =
-  "order-last grid w-full grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-3 sm:contents";
+  "order-last grid w-full grid-cols-2 gap-3 border-t pt-3 sm:contents";
 
 interface PendingTaskAttachment {
   contentUrl: string;
@@ -196,6 +196,7 @@ export interface TaskSurfaceHandle {
 
 export function TaskSurface({
   chat,
+  compactHeader = false,
   deleting = false,
   onClose,
   onDelete,
@@ -206,6 +207,7 @@ export function TaskSurface({
   worker,
 }: {
   chat: ChatSummary;
+  compactHeader?: boolean;
   deleting?: boolean;
   onClose?(): void;
   onDelete?(): void;
@@ -232,10 +234,11 @@ export function TaskSurface({
     worker,
     encryptionSnapshot,
   );
-  const workerEncryptionMessage = taskWorkerEncryptionMessage(
+  const workerEncryptionMessage = taskWorkerEncryptionCanAttempt(
     workerEncryptionReadiness,
-    workerName,
-  );
+  )
+    ? null
+    : taskWorkerEncryptionMessage(workerEncryptionReadiness, workerName);
   const [brief, setBrief] = useState("");
   const [planGoalEnabled, setPlanGoalEnabled] = useState(false);
   const [priority, setPriority] = useState(0);
@@ -860,7 +863,13 @@ export function TaskSurface({
       }}
       onPaste={handlePaste}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2.5 sm:px-6">
+      <div
+        className={cn(
+          "flex min-w-0 shrink-0 items-center gap-2 border-b px-4 py-2 sm:px-6",
+          compactHeader &&
+            "pr-14 pt-[max(0.5rem,env(safe-area-inset-top))] md:pr-16 md:pt-2",
+        )}
+      >
         {onClose ? (
           <Button
             aria-label="Close Task"
@@ -877,11 +886,11 @@ export function TaskSurface({
             <X className="size-4" />
           </Button>
         ) : (
-          <ListTodo className="size-4 text-violet-500" />
+          <ListTodo className="size-4 shrink-0 text-violet-500" />
         )}
         <input
           aria-label="Task title"
-          className="min-w-40 flex-1 bg-transparent text-sm font-medium outline-none"
+          className="h-8 min-w-0 flex-1 truncate bg-transparent text-sm font-medium outline-none"
           maxLength={200}
           value={titleDraft}
           onBlur={() => {
@@ -896,7 +905,7 @@ export function TaskSurface({
         />
         <span
           className={cn(
-            "text-[11px] text-muted-foreground",
+            "shrink-0 text-[11px] text-muted-foreground",
             (conflict || saveDraft.isError) && "text-destructive",
           )}
           role="status"
@@ -905,7 +914,7 @@ export function TaskSurface({
         </span>
         <Button
           aria-label="Copy Task brief"
-          className="size-7"
+          className="size-7 shrink-0"
           size="icon"
           title="Copy Task brief"
           variant="ghost"
@@ -916,7 +925,7 @@ export function TaskSurface({
         {taskCanBeDeleted(task.data) && onDelete ? (
           <Button
             aria-label="Delete Task"
-            className="size-7"
+            className="size-7 shrink-0"
             disabled={deleting}
             size="icon"
             title="Delete Task"
@@ -1020,7 +1029,7 @@ export function TaskSurface({
             ariaLabel="Task brief"
             onChange={setBrief}
             onSave={() => void saveCurrentDraft().catch(() => undefined)}
-            placeholder="Describe the outcome, constraints, and context for this Task…"
+            placeholder="What should this task accomplish?"
             readOnly={!draftEditable}
             value={brief}
           />
@@ -1229,16 +1238,16 @@ export function TaskSurface({
             </span>
           </Button>
         </div>
-        <p
-          className={cn(
-            "mt-2 text-[11px] text-muted-foreground",
-            !mobileOptionsOpen && "hidden sm:block",
-          )}
-        >
-          {planGoalEnabled
-            ? "The Task queues for one read-only planning cycle. Implementation access is reserved for its Goal."
-            : "The saved prompt queues as a normal agent turn and starts as soon as its model and execution worker are available."}
-        </p>
+        {planGoalEnabled ? (
+          <p
+            className={cn(
+              "mt-2 text-[11px] text-muted-foreground",
+              !mobileOptionsOpen && "hidden sm:block",
+            )}
+          >
+            Planning is read-only. The Goal uses the implementation permissions.
+          </p>
+        ) : null}
         {attachmentNotice || starting.isError || selectPermission.isError ? (
           <p className="mt-2 text-xs text-destructive">
             {attachmentNotice ??

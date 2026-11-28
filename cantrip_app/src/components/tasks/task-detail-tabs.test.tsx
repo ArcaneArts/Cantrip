@@ -37,22 +37,30 @@ function Overview({ visible }: { visible: boolean }) {
 }
 
 describe("Task detail tabs", () => {
-  it("opens Overview first and switches full views without dropping the saved overview/editor", async () => {
+  it("reveals activity after a draft is submitted without remounting its overview", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
+    const task = (showActivity: boolean) => (
+      <TaskDetailTabs
+        chat={{ id: "task", status: "running" } as ChatSummary}
+        chatContent={<div data-chat>Actual chat slot</div>}
+        overview={(visible) => <Overview visible={visible} />}
+        showActivity={showActivity}
+        visible
+      />
+    );
     await act(async () => {
-      renderer = TestRenderer.create(
-        <TaskDetailTabs
-          chat={{ id: "task", status: "running" } as ChatSummary}
-          chatContent={<div data-chat>Actual chat slot</div>}
-          overview={(visible) => <Overview visible={visible} />}
-          visible
-        />,
-      );
+      renderer = TestRenderer.create(task(false));
     });
     const tabs = () =>
       renderer.root
         .findAllByProps({ role: "tab" })
         .filter((node) => node.type === "button");
+    expect(tabs()).toHaveLength(0);
+    const overview = renderer.root.findByType("input");
+    await act(async () =>
+      overview.props.onChange({ target: { value: "Unsaved task edit" } }),
+    );
+    await act(async () => renderer.update(task(true)));
     expect(
       tabs().map((tab) =>
         tab.children.filter((child) => typeof child === "string").join(""),
@@ -64,10 +72,6 @@ describe("Task detail tabs", () => {
       false,
       false,
     ]);
-    const overview = renderer.root.findByType("input");
-    await act(async () =>
-      overview.props.onChange({ target: { value: "Unsaved task edit" } }),
-    );
     await act(async () => tabs()[1]!.props.onClick());
     expect(
       renderer.root.findAllByProps({ "data-trajectory": true }),

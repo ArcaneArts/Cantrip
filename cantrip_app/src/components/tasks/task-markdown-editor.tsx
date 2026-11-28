@@ -1,6 +1,7 @@
 import {
   BlockTypeSelect,
   BoldItalicUnderlineToggles,
+  ButtonWithTooltip,
   ChangeCodeMirrorLanguage,
   CodeToggle,
   ConditionalContents,
@@ -29,6 +30,8 @@ import {
   toolbarPlugin,
   translation$,
 } from "@mdxeditor/editor";
+import { Content as PopoverContent } from "@radix-ui/react-popover";
+import { Ellipsis } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -36,6 +39,8 @@ import {
   useRef,
   type KeyboardEvent,
 } from "react";
+
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
 
 import "./task-markdown-editor.css";
 
@@ -80,14 +85,32 @@ function TaskMarkdownToolbar() {
               <Separator />
               <BlockTypeSelect />
               <BoldItalicUnderlineToggles options={["Bold", "Italic"]} />
-              <StrikeThroughSupSubToggles options={["Strikethrough"]} />
-              <CodeToggle />
-              <CreateLink />
-              <Separator />
-              <ListsToggle />
-              <InsertCodeBlock />
-              <InsertTable />
-              <InsertThematicBreak />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <ButtonWithTooltip title="More formatting">
+                    <Ellipsis className="size-4" />
+                  </ButtonWithTooltip>
+                </PopoverTrigger>
+                <PopoverContent
+                  aria-label="More formatting"
+                  className="z-10 grid gap-1 rounded-md border bg-popover p-2 shadow-md"
+                  collisionPadding={8}
+                  sideOffset={6}
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                >
+                  <div className="flex items-center gap-1">
+                    <StrikeThroughSupSubToggles options={["Strikethrough"]} />
+                    <CodeToggle />
+                    <CreateLink />
+                    <ListsToggle />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <InsertCodeBlock />
+                    <InsertTable />
+                    <InsertThematicBreak />
+                  </div>
+                </PopoverContent>
+              </Popover>
             </>
           ),
         },
@@ -191,7 +214,7 @@ export function TaskMarkdownEditor({
   return (
     <div
       ref={containerRef}
-      className="h-full min-h-0"
+      className="h-full min-h-0 min-w-0"
       onKeyDownCapture={handleKeyDown}
     >
       <MDXEditor

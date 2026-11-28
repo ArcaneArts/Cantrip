@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/error-message";
+import { cn } from "@/lib/utils";
 
 export const TASK_DIALOG_POSITIONER_CLASS_NAME = "p-0 md:p-6";
 export const TASK_DIALOG_CONTENT_CLASS_NAME =
@@ -11,6 +12,7 @@ export const TASK_DIALOG_CONTENT_CLASS_NAME =
 
 export function TaskDialog({
   beforeClose,
+  compactHeader = false,
   children,
   headerActions,
   onClose,
@@ -18,6 +20,7 @@ export function TaskDialog({
   title,
 }: {
   beforeClose?(): Promise<void> | undefined;
+  compactHeader?: boolean;
   children: ReactNode;
   headerActions?: ReactNode;
   onClose(): void;
@@ -69,8 +72,18 @@ export function TaskDialog({
           }
         }}
       >
-        <header className="flex shrink-0 items-center gap-3 border-b px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-6 md:py-2">
-          <DialogTitle className="min-w-0 flex-1 truncate text-sm">
+        <header
+          className={
+            compactHeader
+              ? "absolute right-4 top-[max(0.5rem,env(safe-area-inset-top))] z-10 md:right-6 md:top-2"
+              : "flex shrink-0 items-center gap-3 border-b px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-6 md:py-2"
+          }
+        >
+          <DialogTitle
+            className={
+              compactHeader ? "sr-only" : "min-w-0 flex-1 truncate text-sm"
+            }
+          >
             {title}
           </DialogTitle>
           {headerActions}
@@ -87,7 +100,10 @@ export function TaskDialog({
         </header>
         {closeError ? (
           <div
-            className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            className={cn(
+              "flex shrink-0 flex-wrap items-center gap-3 bg-destructive/5 px-4 py-3 text-sm text-destructive",
+              compactHeader ? "order-last border-t" : "border-b",
+            )}
             role="alert"
           >
             <span className="min-w-0 flex-1">

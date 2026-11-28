@@ -55,6 +55,7 @@ import {
   deleteTask,
   getProjectTaskPauseState,
   getProjectTaskWorkload,
+  getTask,
   setProjectTaskPauseState,
   recoverTaskImplementation,
 } from "@/lib/api";
@@ -709,6 +710,14 @@ export function ProjectTasksDashboard({
   const activeTaskWorker = activeTask
     ? workers.find(({ workerId }) => workerId === activeTask.activeWorkerId)
     : undefined;
+  // TaskSurface owns fetching. Observe the same record even when another
+  // detail tab is open, so dispatch changes also update the dialog chrome.
+  const { data: activeTaskDetail } = useQuery({
+    enabled: false,
+    queryKey: ["task", activeTaskChatId],
+    queryFn: () => getTask(activeTaskChatId!),
+  });
+  const draft = projectTaskIsUnqueuedDraft(activeTaskDetail);
   const modelNames = new Map(
     (settings?.models ?? []).map((model) => [model.id, model.name]),
   );
@@ -761,6 +770,7 @@ export function ProjectTasksDashboard({
       <TaskDialog
         key={activeTask?.id}
         beforeClose={() => taskSurfaceRef.current?.prepareClose()}
+        compactHeader={draft}
         onClose={onCloseTask}
         open={active && Boolean(activeTask)}
         title={activeTask?.title ?? "Task"}
@@ -769,11 +779,13 @@ export function ProjectTasksDashboard({
           <TaskDetailTabs
             chat={activeTask}
             chatContent={taskChatContent}
+            showActivity={Boolean(activeTaskDetail && !draft)}
             visible={active}
             overview={(visible) => (
               <PersistentTaskViews
                 visible={visible}
                 activeTask={{ chat: activeTask, worker: activeTaskWorker }}
+                compactHeader={draft}
                 deleting={deleteTaskMutation.isPending}
                 settings={settings}
                 surfaceRef={taskSurfaceRef}
