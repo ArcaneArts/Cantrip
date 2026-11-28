@@ -32,6 +32,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
@@ -432,6 +433,7 @@ export function WorkerSettings() {
     queryFn: getDesktopAutostart,
     queryKey: ["desktop-autostart"],
   });
+  const [tab, setTab] = useState<"workers" | "network">("workers");
   const [search, setSearch] = useState("");
   const [pairOpen, setPairOpen] = useState(false);
   const [pairLabel, setPairLabel] = useState("");
@@ -797,342 +799,373 @@ export function WorkerSettings() {
 
   return (
     <div className="grid w-full gap-4">
-      <WorkerNetworkGraph
-        currentClient={{
-          connected: liveStatus === "live",
-          deviceLabel: currentClientDeviceLabel(
-            desktopApp,
-            navigator.userAgent,
-          ),
-          email: bootstrap.data?.auth.currentUser?.email,
-          userName: bootstrap.data?.auth.currentUser?.displayName,
-        }}
-        localWorkerIds={localWorkerIds}
-        server={{
-          deploymentMode: bootstrap.data?.server.deploymentMode,
-          id: bootstrap.data?.server.id,
-          kind: activeConnection.kind,
-          name: activeConnection.name,
-          url: serverUrl,
-          version: bootstrap.data?.server.version.version,
-        }}
-        sessions={accountSessions.data ?? []}
-        workers={workers.data ?? []}
+      <NavigationTabBar<"workers" | "network">
+        activeTab={tab}
+        ariaLabel="Worker settings views"
+        className="border-b"
+        onTabChange={setTab}
+        panelIdPrefix="worker-settings"
+        tabs={[
+          { id: "workers", label: "Workers" },
+          { id: "network", label: "Network" },
+        ]}
       />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <SettingsSearchField
-          ariaLabel="Search workers"
-          placeholder="Search workers, platforms, and project sources"
-          value={search}
-          onValueChange={setSearch}
-        />
-        {!workers.isLoading &&
-        !desktopWorkers.isLoading &&
-        desktopEnrollmentStatus.data?.status !== "paired" &&
-        (offerThisMachine || desktopPairing) ? (
+      <div
+        aria-labelledby="worker-settings-network-tab"
+        hidden={tab !== "network"}
+        id="worker-settings-network-panel"
+        role="tabpanel"
+      >
+        {tab === "network" ? (
+          <WorkerNetworkGraph
+            currentClient={{
+              connected: liveStatus === "live",
+              deviceLabel: currentClientDeviceLabel(
+                desktopApp,
+                navigator.userAgent,
+              ),
+              email: bootstrap.data?.auth.currentUser?.email,
+              userName: bootstrap.data?.auth.currentUser?.displayName,
+            }}
+            localWorkerIds={localWorkerIds}
+            server={{
+              deploymentMode: bootstrap.data?.server.deploymentMode,
+              id: bootstrap.data?.server.id,
+              kind: activeConnection.kind,
+              name: activeConnection.name,
+              url: serverUrl,
+              version: bootstrap.data?.server.version.version,
+            }}
+            sessions={accountSessions.data ?? []}
+            workers={workers.data ?? []}
+          />
+        ) : null}
+      </div>
+      <div
+        aria-labelledby="worker-settings-workers-tab"
+        className={tab === "workers" ? "grid gap-4" : "hidden"}
+        id="worker-settings-workers-panel"
+        role="tabpanel"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <SettingsSearchField
+            ariaLabel="Search workers"
+            placeholder="Search workers…"
+            value={search}
+            onValueChange={setSearch}
+          />
+          {!workers.isLoading &&
+          !desktopWorkers.isLoading &&
+          desktopEnrollmentStatus.data?.status !== "paired" &&
+          (offerThisMachine || desktopPairing) ? (
+            <Button
+              className="shrink-0"
+              disabled={desktopPairing}
+              onClick={() => {
+                addThisMachine.reset();
+                setDesktopEnrollment(null);
+                setDesktopPairingWorkerId(null);
+                setDesktopPairingError(null);
+                addThisMachine.mutate();
+              }}
+            >
+              {desktopPairing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Laptop className="size-4" />
+              )}
+              {desktopPairing
+                ? recoverableWorkerId
+                  ? "Restoring this machine…"
+                  : "Adding this machine…"
+                : recoverableWorkerId
+                  ? "Restore this machine"
+                  : "Add this machine"}
+            </Button>
+          ) : null}
           <Button
             className="shrink-0"
-            disabled={desktopPairing}
+            variant={offerThisMachine || desktopPairing ? "outline" : "default"}
             onClick={() => {
-              addThisMachine.reset();
-              setDesktopEnrollment(null);
-              setDesktopPairingWorkerId(null);
-              setDesktopPairingError(null);
-              addThisMachine.mutate();
+              pairing.reset();
+              setPairResult(null);
+              setCopyError(null);
+              setPairOpen(true);
             }}
           >
-            {desktopPairing ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Laptop className="size-4" />
-            )}
-            {desktopPairing
-              ? recoverableWorkerId
-                ? "Restoring this machine…"
-                : "Adding this machine…"
-              : recoverableWorkerId
-                ? "Restore this machine"
-                : "Add this machine"}
+            <Plus className="size-4" /> Pair worker
           </Button>
-        ) : null}
-        <Button
-          className="shrink-0"
-          variant={offerThisMachine || desktopPairing ? "outline" : "default"}
-          onClick={() => {
-            pairing.reset();
-            setPairResult(null);
-            setCopyError(null);
-            setPairOpen(true);
-          }}
-        >
-          <Plus className="size-4" /> Pair worker
-        </Button>
-      </div>
+        </div>
 
-      {desktopApp ? (
-        <section className="border-y" aria-labelledby="desktop-worker-title">
+        <section className="border-y">
+          <div className="flex items-center justify-between gap-3 px-3 py-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <Cpu className="size-4 shrink-0 text-muted-foreground" />
+              <div>
+                <h2 className="text-sm font-semibold">
+                  {workers.data
+                    ? `${workers.data.length} ${workers.data.length === 1 ? "worker" : "workers"}`
+                    : "Workers"}
+                </h2>
+              </div>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={workers.isFetching}
+              onClick={() => {
+                void workers.refetch();
+                void accountSessions.refetch();
+              }}
+            >
+              <RefreshCw
+                className={`size-3.5 ${workers.isFetching ? "animate-spin" : ""}`}
+              />
+              <span className="sr-only">Refresh workers</span>
+            </Button>
+          </div>
+          <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_144px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
+            <span>Worker</span>
+            <span>Runtime</span>
+            <span>Project sources</span>
+            <span className="text-right">Actions</span>
+          </div>
+          <div className="border-t">
+            {visibleWorkers.map((worker) => (
+              <WorkerRow
+                key={worker.workerId}
+                isDefault={
+                  settings.data?.preferences.defaultWorkerId === worker.workerId
+                }
+                checkingCodeGraphUpdate={
+                  codeGraphUpdate.isPending &&
+                  codeGraphUpdate.variables === worker.workerId
+                }
+                isThisMachine={
+                  desktopWorkerForServer?.workerId === worker.workerId
+                }
+                restarting={
+                  Boolean(restartBaselines[worker.workerId]) ||
+                  (restartMutation.isPending &&
+                    restartTarget?.workerId === worker.workerId)
+                }
+                worker={worker}
+                onManage={() => {
+                  setSelected(worker);
+                  setNameDraft(worker.name);
+                  setRotation(null);
+                  setCopyError(null);
+                }}
+                onRestart={() => {
+                  restartMutation.reset();
+                  setRestartTarget(worker);
+                }}
+                onCheckCodeGraphUpdate={() =>
+                  codeGraphUpdate.mutate(worker.workerId)
+                }
+                onManageWebRuntimes={() => {
+                  webRuntimeAction.reset();
+                  setConfirmProfileClear(false);
+                  setWebRuntimeTarget(worker);
+                }}
+                onUnlink={() => setUnlinkTarget(worker)}
+              />
+            ))}
+            {workers.isLoading ? (
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 inline size-4 animate-spin" /> Loading
+                workers…
+              </p>
+            ) : workers.isError ? (
+              <p className="px-3 py-8 text-center text-sm text-destructive">
+                {errorMessage(workers.error)}
+              </p>
+            ) : !visibleWorkers.length ? (
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                {normalizedSearch
+                  ? "No workers match this search."
+                  : "No workers are linked yet."}
+              </p>
+            ) : null}
+          </div>
+        </section>
+
+        {desktopApp ? (
+          <section className="border-y" aria-labelledby="desktop-worker-title">
+            <div className="flex items-center gap-2.5 px-3 py-3">
+              <Rocket className="size-4 shrink-0 text-muted-foreground" />
+              <div>
+                <h2 id="desktop-worker-title" className="text-sm font-semibold">
+                  This desktop
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {activeConnection.kind === "local"
+                    ? "The bundled local worker is detected and managed automatically."
+                    : desktopWorkerForServer
+                      ? recoverableWorkerId
+                        ? `Restore this machine's retained projects to ${activeConnection.name}.`
+                        : `${desktopWorkerForServer.name} is ${desktopWorkerForServer.running ? "running" : "stopped"} for ${activeConnection.name}.`
+                      : `Add this machine to run work for ${activeConnection.name} without copying a link code.`}
+                </p>
+              </div>
+            </div>
+            <label className="flex cursor-pointer items-center justify-between gap-4 border-t px-3 py-3">
+              <span className="flex min-w-0 items-start gap-2.5">
+                <Laptop className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Launch Cantrip at login
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Starts hidden in the system tray so linked workers reconnect
+                    after a restart. Closing the window also keeps them online.
+                  </span>
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className="size-4 shrink-0 accent-foreground"
+                checked={desktopAutostart.data ?? false}
+                disabled={
+                  desktopAutostart.isLoading || updateAutostart.isPending
+                }
+                onChange={(event) =>
+                  updateAutostart.mutate(event.target.checked)
+                }
+              />
+            </label>
+            {addThisMachine.isError ||
+            desktopEnrollmentStatus.isError ||
+            updateAutostart.isError ||
+            desktopPairingError ? (
+              <p className="border-t px-3 py-2 text-sm text-destructive">
+                {desktopPairingError ??
+                  errorMessage(
+                    addThisMachine.error ??
+                      desktopEnrollmentStatus.error ??
+                      updateAutostart.error,
+                  )}
+              </p>
+            ) : desktopEnrollmentStatus.data?.status === "expired" ? (
+              <p className="border-t px-3 py-2 text-sm text-destructive">
+                This machine did not finish linking before enrollment expired.
+                Try adding it again.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className="border-y" aria-labelledby="worker-placement-title">
           <div className="flex items-center gap-2.5 px-3 py-3">
-            <Rocket className="size-4 shrink-0 text-muted-foreground" />
+            <HardDrive className="size-4 shrink-0 text-muted-foreground" />
             <div>
-              <h2 id="desktop-worker-title" className="text-sm font-semibold">
-                This desktop
+              <h2 id="worker-placement-title" className="text-sm font-semibold">
+                Placement defaults
               </h2>
               <p className="text-xs text-muted-foreground">
-                {activeConnection.kind === "local"
-                  ? "The bundled local worker is detected and managed automatically."
-                  : desktopWorkerForServer
-                    ? recoverableWorkerId
-                      ? `Restore this machine's retained projects to ${activeConnection.name}.`
-                      : `${desktopWorkerForServer.name} is ${desktopWorkerForServer.running ? "running" : "stopped"} for ${activeConnection.name}.`
-                    : `Add this machine to run work for ${activeConnection.name} without copying a link code.`}
+                Defaults used when Cantrip places future project replicas and
+                surfaces. Existing resources are not moved.
               </p>
             </div>
           </div>
-          <label className="flex cursor-pointer items-center justify-between gap-4 border-t px-3 py-3">
-            <span className="flex min-w-0 items-start gap-2.5">
-              <Laptop className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="divide-y border-t">
+            <label className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center">
               <span>
                 <span className="block text-sm font-medium">
-                  Launch Cantrip at login
+                  Default worker
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  Starts hidden in the system tray so linked workers reconnect
-                  after a restart. Closing the window also keeps them online.
+                  Preferred machine when a project does not override placement.
                 </span>
               </span>
-            </span>
-            <input
-              type="checkbox"
-              className="size-4 shrink-0 accent-foreground"
-              checked={desktopAutostart.data ?? false}
-              disabled={desktopAutostart.isLoading || updateAutostart.isPending}
-              onChange={(event) => updateAutostart.mutate(event.target.checked)}
-            />
-          </label>
-          {addThisMachine.isError ||
-          desktopEnrollmentStatus.isError ||
-          updateAutostart.isError ||
-          desktopPairingError ? (
+              <NativeSelect
+                className={inputClass}
+                disabled={settings.isLoading || updatePlacementPolicy.isPending}
+                value={settings.data?.preferences.defaultWorkerId ?? ""}
+                onChange={(event) =>
+                  updatePlacementPolicy.mutate({
+                    defaultWorkerId: event.target.value || null,
+                  })
+                }
+              >
+                <option value="">Automatic fallback</option>
+                {(workers.data ?? []).map((worker) => (
+                  <option key={worker.workerId} value={worker.workerId}>
+                    {worker.name} ({worker.online ? "online" : "offline"})
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            <label className="flex cursor-pointer items-center justify-between gap-4 px-3 py-3">
+              <span className="flex min-w-0 items-start gap-2.5">
+                <Plus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Provision missing replicas automatically
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Allows future placement flows to create a worker-local clone
+                    when the selected worker has no replica.
+                  </span>
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className="size-4 shrink-0 accent-foreground"
+                checked={
+                  settings.data?.preferences.automaticReplicaProvisioning ??
+                  false
+                }
+                disabled={settings.isLoading || updatePlacementPolicy.isPending}
+                onChange={(event) =>
+                  updatePlacementPolicy.mutate({
+                    automaticReplicaProvisioning: event.target.checked,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center">
+              <span className="flex min-w-0 items-start gap-2.5">
+                <GitCompareArrows className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Automatic replica synchronization
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Safety policy for future placement. Fast-forward never
+                    resets, rebases, cleans, or overwrites local work.
+                  </span>
+                </span>
+              </span>
+              <NativeSelect
+                className={inputClass}
+                disabled={settings.isLoading || updatePlacementPolicy.isPending}
+                value={
+                  settings.data?.preferences.automaticReplicaSynchronization ??
+                  "off"
+                }
+                onChange={(event) =>
+                  updatePlacementPolicy.mutate({
+                    automaticReplicaSynchronization: event.target.value as
+                      "off" | "verify-only" | "fast-forward-primary",
+                  })
+                }
+              >
+                <option value="off">Off</option>
+                <option value="verify-only">Verify exact revision</option>
+                <option value="fast-forward-primary">
+                  Fast-forward clean Primary
+                </option>
+              </NativeSelect>
+            </label>
+          </div>
+          {settings.isError || updatePlacementPolicy.isError ? (
             <p className="border-t px-3 py-2 text-sm text-destructive">
-              {desktopPairingError ??
-                errorMessage(
-                  addThisMachine.error ??
-                    desktopEnrollmentStatus.error ??
-                    updateAutostart.error,
-                )}
-            </p>
-          ) : desktopEnrollmentStatus.data?.status === "expired" ? (
-            <p className="border-t px-3 py-2 text-sm text-destructive">
-              This machine did not finish linking before enrollment expired. Try
-              adding it again.
+              {errorMessage(settings.error ?? updatePlacementPolicy.error)}
             </p>
           ) : null}
         </section>
-      ) : null}
-
-      <section className="border-y" aria-labelledby="worker-placement-title">
-        <div className="flex items-center gap-2.5 px-3 py-3">
-          <HardDrive className="size-4 shrink-0 text-muted-foreground" />
-          <div>
-            <h2 id="worker-placement-title" className="text-sm font-semibold">
-              Placement defaults
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Defaults used when Cantrip places future project replicas and
-              surfaces. Existing resources are not moved.
-            </p>
-          </div>
-        </div>
-        <div className="divide-y border-t">
-          <label className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center">
-            <span>
-              <span className="block text-sm font-medium">Default worker</span>
-              <span className="block text-xs text-muted-foreground">
-                Preferred machine when a project does not override placement.
-              </span>
-            </span>
-            <NativeSelect
-              className={inputClass}
-              disabled={settings.isLoading || updatePlacementPolicy.isPending}
-              value={settings.data?.preferences.defaultWorkerId ?? ""}
-              onChange={(event) =>
-                updatePlacementPolicy.mutate({
-                  defaultWorkerId: event.target.value || null,
-                })
-              }
-            >
-              <option value="">Automatic fallback</option>
-              {(workers.data ?? []).map((worker) => (
-                <option key={worker.workerId} value={worker.workerId}>
-                  {worker.name} ({worker.online ? "online" : "offline"})
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <label className="flex cursor-pointer items-center justify-between gap-4 px-3 py-3">
-            <span className="flex min-w-0 items-start gap-2.5">
-              <Plus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <span>
-                <span className="block text-sm font-medium">
-                  Provision missing replicas automatically
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  Allows future placement flows to create a worker-local clone
-                  when the selected worker has no replica.
-                </span>
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              className="size-4 shrink-0 accent-foreground"
-              checked={
-                settings.data?.preferences.automaticReplicaProvisioning ?? false
-              }
-              disabled={settings.isLoading || updatePlacementPolicy.isPending}
-              onChange={(event) =>
-                updatePlacementPolicy.mutate({
-                  automaticReplicaProvisioning: event.target.checked,
-                })
-              }
-            />
-          </label>
-          <label className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center">
-            <span className="flex min-w-0 items-start gap-2.5">
-              <GitCompareArrows className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <span>
-                <span className="block text-sm font-medium">
-                  Automatic replica synchronization
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  Safety policy for future placement. Fast-forward never resets,
-                  rebases, cleans, or overwrites local work.
-                </span>
-              </span>
-            </span>
-            <NativeSelect
-              className={inputClass}
-              disabled={settings.isLoading || updatePlacementPolicy.isPending}
-              value={
-                settings.data?.preferences.automaticReplicaSynchronization ??
-                "off"
-              }
-              onChange={(event) =>
-                updatePlacementPolicy.mutate({
-                  automaticReplicaSynchronization: event.target.value as
-                    "off" | "verify-only" | "fast-forward-primary",
-                })
-              }
-            >
-              <option value="off">Off</option>
-              <option value="verify-only">Verify exact revision</option>
-              <option value="fast-forward-primary">
-                Fast-forward clean Primary
-              </option>
-            </NativeSelect>
-          </label>
-        </div>
-        {settings.isError || updatePlacementPolicy.isError ? (
-          <p className="border-t px-3 py-2 text-sm text-destructive">
-            {errorMessage(settings.error ?? updatePlacementPolicy.error)}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="border-y">
-        <div className="flex items-center justify-between gap-3 px-3 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <Cpu className="size-4 shrink-0 text-muted-foreground" />
-            <div>
-              <h2 className="text-sm font-semibold">
-                Workers {workers.data?.length ?? 0}
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Machines that run files, terminals, Codex, Code, and remote
-                surfaces.
-              </p>
-            </div>
-          </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            disabled={workers.isFetching}
-            onClick={() => {
-              void workers.refetch();
-              void accountSessions.refetch();
-            }}
-          >
-            <RefreshCw
-              className={`size-3.5 ${workers.isFetching ? "animate-spin" : ""}`}
-            />
-            <span className="sr-only">Refresh workers</span>
-          </Button>
-        </div>
-        <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_144px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
-          <span>Worker</span>
-          <span>Runtime</span>
-          <span>Project sources</span>
-          <span className="text-right">Actions</span>
-        </div>
-        <div className="border-t">
-          {visibleWorkers.map((worker) => (
-            <WorkerRow
-              key={worker.workerId}
-              isDefault={
-                settings.data?.preferences.defaultWorkerId === worker.workerId
-              }
-              checkingCodeGraphUpdate={
-                codeGraphUpdate.isPending &&
-                codeGraphUpdate.variables === worker.workerId
-              }
-              isThisMachine={
-                desktopWorkerForServer?.workerId === worker.workerId
-              }
-              restarting={
-                Boolean(restartBaselines[worker.workerId]) ||
-                (restartMutation.isPending &&
-                  restartTarget?.workerId === worker.workerId)
-              }
-              worker={worker}
-              onManage={() => {
-                setSelected(worker);
-                setNameDraft(worker.name);
-                setRotation(null);
-                setCopyError(null);
-              }}
-              onRestart={() => {
-                restartMutation.reset();
-                setRestartTarget(worker);
-              }}
-              onCheckCodeGraphUpdate={() =>
-                codeGraphUpdate.mutate(worker.workerId)
-              }
-              onManageWebRuntimes={() => {
-                webRuntimeAction.reset();
-                setConfirmProfileClear(false);
-                setWebRuntimeTarget(worker);
-              }}
-              onUnlink={() => setUnlinkTarget(worker)}
-            />
-          ))}
-          {workers.isLoading ? (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 inline size-4 animate-spin" /> Loading
-              workers…
-            </p>
-          ) : workers.isError ? (
-            <p className="px-3 py-8 text-center text-sm text-destructive">
-              {errorMessage(workers.error)}
-            </p>
-          ) : !visibleWorkers.length ? (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {normalizedSearch
-                ? "No workers match this search."
-                : "No workers are linked yet."}
-            </p>
-          ) : null}
-        </div>
-      </section>
+      </div>
 
       <Dialog
         open={Boolean(webRuntimeTarget)}

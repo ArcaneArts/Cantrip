@@ -324,6 +324,10 @@ export function workerNetworkRoutePresentation(
   };
 }
 
+const latencyFormat = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+});
+
 export function workerNetworkRouteDetails(
   workerOnline: boolean,
   serverName: string,
@@ -374,7 +378,7 @@ export function workerNetworkRouteDetails(
       value:
         status?.latencyMs === null || !status
           ? "Unknown"
-          : `${status.latencyMs} ms`,
+          : `${latencyFormat.format(status.latencyMs)} ms`,
     },
     { label: "Fallback", value: route.fallbackLabel ?? "None" },
     {
@@ -537,7 +541,7 @@ function NetworkNodeButton({
               {node.route.activeChannelCount === 1 ? "" : "s"}
               {node.route.latencyMs === null
                 ? ""
-                : ` · ${node.route.latencyMs} ms`}
+                : ` · ${latencyFormat.format(node.route.latencyMs)} ms`}
             </span>
             {node.route.fallbackLabel ? (
               <span
@@ -571,25 +575,16 @@ function NetworkNodeButton({
 }
 
 function NetworkNodeGrid({
-  empty,
   nodes,
   register,
   onSelect,
 }: {
-  empty: string;
   nodes: NetworkNode[];
   onSelect(nodeId: string): void;
   register(nodeId: string, element: HTMLButtonElement | null): void;
 }) {
-  if (!nodes.length) {
-    return (
-      <div className="grid min-h-24 place-items-center rounded-xl border border-dashed bg-background/35 px-4 text-center text-xs text-muted-foreground">
-        {empty}
-      </div>
-    );
-  }
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-3 @lg:grid-cols-2 @3xl:grid-cols-3">
       {nodes.map((node) => (
         <NetworkNodeButton
           key={node.id}
@@ -872,16 +867,12 @@ export function WorkerNetworkGraph({
 
   return (
     <>
-      <div className="border-t bg-gradient-to-b from-muted/[0.14] to-transparent px-3 py-4">
+      <div className="px-1">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
             <Network className="mt-0.5 size-4 shrink-0 text-sky-500" />
             <div>
               <h3 className="text-sm font-semibold">Network map</h3>
-              <p className="text-xs text-muted-foreground">
-                Live server control paths and current-client WorkerLink data
-                routes. Select any node for identity and routing details.
-              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -987,46 +978,43 @@ export function WorkerNetworkGraph({
             </div>
           ) : null}
 
-          <div className="relative z-10 grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-            <section className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.035] p-3 shadow-[inset_0_0_40px_rgba(14,165,233,0.035)] sm:p-4">
+          <div
+            className={cn(
+              "relative z-10 grid gap-4",
+              remoteNodes.length > 0 && "lg:grid-cols-2",
+            )}
+          >
+            <section className="@container min-w-0">
               <div className="mb-3 flex items-center gap-2">
                 <span className="grid size-7 place-items-center rounded-lg border border-sky-500/20 bg-background/70 text-sky-500">
                   <Laptop className="size-3.5" />
                 </span>
                 <div>
                   <h4 className="text-xs font-semibold">This machine</h4>
-                  <p className="text-[11px] text-muted-foreground">
-                    Localhost boundary · this client and local runtimes
-                  </p>
                 </div>
               </div>
               <NetworkNodeGrid
-                empty="This client is the only local node."
                 nodes={localNodes}
                 register={registerNode}
                 onSelect={setSelectedNodeId}
               />
             </section>
 
-            <section className="rounded-2xl border border-dashed bg-background/30 p-3 sm:p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="grid size-7 place-items-center rounded-lg border bg-background/70 text-muted-foreground">
-                  <Cloud className="size-3.5" />
-                </span>
-                <div>
+            {remoteNodes.length > 0 ? (
+              <section className="@container min-w-0 border-t pt-3 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="grid size-7 place-items-center rounded-lg border bg-background/70 text-muted-foreground">
+                    <Cloud className="size-3.5" />
+                  </span>
                   <h4 className="text-xs font-semibold">Across the network</h4>
-                  <p className="text-[11px] text-muted-foreground">
-                    Remote workers and other connected account clients
-                  </p>
                 </div>
-              </div>
-              <NetworkNodeGrid
-                empty="No remote workers or peer clients are connected."
-                nodes={remoteNodes}
-                register={registerNode}
-                onSelect={setSelectedNodeId}
-              />
-            </section>
+                <NetworkNodeGrid
+                  nodes={remoteNodes}
+                  register={registerNode}
+                  onSelect={setSelectedNodeId}
+                />
+              </section>
+            ) : null}
           </div>
         </div>
 
