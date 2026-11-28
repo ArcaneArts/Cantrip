@@ -42,7 +42,7 @@ export function GitHistoryFilters({
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3 py-2">
       <form
-        className="flex min-w-48 flex-1 items-center gap-1 sm:max-w-80"
+        className="flex min-w-0 basis-full items-center gap-1 sm:min-w-48 sm:max-w-80 sm:flex-1"
         onSubmit={(event) => {
           event.preventDefault();
           const next = draft.trim();
@@ -58,7 +58,7 @@ export function GitHistoryFilters({
             className="h-7 pl-7 text-xs"
             disabled={disabled}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Filter commit messages…"
+            placeholder="Filter commits…"
             value={draft}
           />
         </div>
