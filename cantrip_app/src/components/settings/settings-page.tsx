@@ -2427,7 +2427,20 @@ export function SettingsPage({
               {section === "tunnels" ? (
                 <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
               ) : null}
-              {section === "skills" ? <SkillsSettings /> : null}
+              {section === "skills" ? (
+                <SkillsSettings
+                  onOpenModels={() => {
+                    setSettingsSearchQuery("");
+                    setSection("models");
+                    onMobileSectionOpenChange?.(true);
+                  }}
+                  onOpenWorkers={() => {
+                    setSettingsSearchQuery("");
+                    setSection("workers");
+                    onMobileSectionOpenChange?.(true);
+                  }}
+                />
+              ) : null}
               {section === "mcp" ? (
                 <div className="w-full min-w-0">
                   <McpServerSettings scope={{ kind: "global" }} />

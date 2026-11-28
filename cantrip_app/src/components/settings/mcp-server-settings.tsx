@@ -605,7 +605,7 @@ export function McpServerSettings({
 
       <div className="px-3 py-2.5">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Configured
+          Managed by Cantrip
         </h3>
       </div>
 
@@ -615,14 +615,9 @@ export function McpServerSettings({
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <p className="truncate text-sm font-medium">Cantrip</p>
-              <Badge variant="secondary">Managed by Cantrip</Badge>
               <Badge variant="outline">Required</Badge>
               <Badge variant="outline">IDE</Badge>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Injected securely for each Cantrip chat; it cannot be edited,
-              disabled, or removed.
-            </p>
           </div>
         </div>
         <Badge variant="secondary">Available</Badge>
@@ -634,7 +629,6 @@ export function McpServerSettings({
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <p className="truncate text-sm font-medium">CodeGraph</p>
-              <Badge variant="secondary">Managed by Cantrip</Badge>
               <Badge variant="outline">Read only</Badge>
               <Badge variant="outline">IDE</Badge>
             </div>
@@ -650,6 +644,11 @@ export function McpServerSettings({
         </Badge>
       </div>
 
+      <div className="px-3 py-2.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {projectId ? "Project servers" : "Custom servers"}
+        </h3>
+      </div>
       {servers.isLoading ? (
         <div className="flex items-center gap-2 px-3 py-5 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" /> Loading MCP servers…
@@ -682,8 +681,8 @@ export function McpServerSettings({
       ) : (
         <p className="px-3 py-5 text-sm text-muted-foreground">
           {projectId
-            ? "No project-local MCP servers. Global servers still apply."
-            : "No global MCP servers configured."}
+            ? "No project-local MCP servers."
+            : "No custom MCP servers."}
         </p>
       )}
 
@@ -702,12 +701,11 @@ export function McpServerSettings({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Available
+              Discover servers
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Scan a worker&apos;s Codex and Claude Code configuration plus
-              running localhost HTTP MCP servers. Nothing is activated until you
-              add it here.
+              Scans Codex, Claude Code, and localhost HTTP servers on the
+              worker.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
