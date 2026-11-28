@@ -66,45 +66,50 @@ export function TaskDetailTabs({
   chat,
   chatContent,
   overview,
+  showActivity = true,
   visible,
 }: {
   chat: ChatSummary;
   chatContent?: ReactNode;
   overview(visible: boolean): ReactNode;
+  showActivity?: boolean;
   visible: boolean;
 }) {
   const [tab, setTab] = useState<TaskDetailTab>("overview");
   const root = useRef<HTMLDivElement>(null);
   const revealOverview = useCallback(() => setTab("overview"), []);
   useAlertDestinationReveal(chat.projectId, chat.id, root, revealOverview);
+  const activeTab = showActivity ? tab : "overview";
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <NavigationTabBar<TaskDetailTab>
-        activeTab={tab}
-        ariaLabel="Task views"
-        className="border-b px-2 [&_button]:h-12 [&_button]:flex-1 [&_button]:px-4 [&_button]:text-sm"
-        onTabChange={setTab}
-        tabs={TASK_DETAIL_TABS}
-      />
+      {showActivity ? (
+        <NavigationTabBar<TaskDetailTab>
+          activeTab={activeTab}
+          ariaLabel="Task views"
+          className="border-b px-2 [&_button]:h-10 [&_button]:flex-1 [&_button]:px-2 [&_button]:text-sm"
+          onTabChange={setTab}
+          tabs={TASK_DETAIL_TABS}
+        />
+      ) : null}
       <div
-        aria-hidden={tab !== "overview"}
-        aria-label="Overview"
-        role="tabpanel"
+        aria-hidden={activeTab !== "overview"}
+        aria-label={showActivity ? "Overview" : undefined}
+        role={showActivity ? "tabpanel" : undefined}
         className={
-          tab === "overview" ? "flex min-h-0 flex-1 flex-col" : "hidden"
+          activeTab === "overview" ? "flex min-h-0 flex-1 flex-col" : "hidden"
         }
       >
-        {overview(visible && tab === "overview")}
+        {overview(visible && activeTab === "overview")}
       </div>
-      {tab === "trajectory" || tab === "state" ? (
+      {activeTab === "trajectory" || activeTab === "state" ? (
         <div
-          aria-label={tab === "trajectory" ? "Trajectory" : "State"}
+          aria-label={activeTab === "trajectory" ? "Trajectory" : "State"}
           role="tabpanel"
           className="min-h-0 flex-1 overflow-hidden"
         >
-          <TaskActivityView chat={chat} tab={tab} visible={visible} />
+          <TaskActivityView chat={chat} tab={activeTab} visible={visible} />
         </div>
-      ) : tab === "chat" ? (
+      ) : activeTab === "chat" ? (
         <div
           aria-label="Chat"
           role="tabpanel"

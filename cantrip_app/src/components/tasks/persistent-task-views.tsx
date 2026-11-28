@@ -29,6 +29,7 @@ export function retainTaskSurfaceTabs(
 
 export function PersistentTaskViews({
   activeTask,
+  compactHeader,
   deleting,
   onClose,
   onDelete,
@@ -38,6 +39,7 @@ export function PersistentTaskViews({
   visible = true,
 }: {
   activeTask: ActiveTaskView | null;
+  compactHeader?: boolean;
   deleting?: boolean;
   onClose?(): void;
   onDelete?(): void;
@@ -72,6 +74,7 @@ export function PersistentTaskViews({
         <TaskSurface
           visible={active && visible}
           chat={retained.chat}
+          compactHeader={compactHeader}
           deleting={active ? deleting : false}
           onClose={active ? onClose : undefined}
           onDelete={active ? onDelete : undefined}

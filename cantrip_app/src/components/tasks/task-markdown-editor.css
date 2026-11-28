@@ -1,6 +1,7 @@
 @import "@mdxeditor/editor/style.css";
 
 .cantrip-task-markdown-editor {
+  --task-editor-inset: clamp(0.75rem, 2vw, 1.5rem);
   --accentBase: color-mix(in oklab, var(--background) 94%, #8b5cf6 6%);
   --accentBgSubtle: color-mix(in oklab, var(--background) 90%, #8b5cf6 10%);
   --accentBg: color-mix(in oklab, var(--background) 84%, #8b5cf6 16%);
@@ -35,11 +36,12 @@
 .cantrip-task-markdown-editor .cantrip-task-markdown-toolbar {
   min-height: 2.75rem;
   width: 100%;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  overflow: visible;
   border-radius: 0;
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklab, var(--background) 88%, transparent);
-  padding: 0.35rem clamp(0.75rem, 2vw, 1.5rem);
+  padding: 0.35rem var(--task-editor-inset);
   backdrop-filter: blur(18px);
 }
 
@@ -52,14 +54,21 @@
   background: transparent;
 }
 
-.cantrip-task-markdown-content {
+.cantrip-task-markdown-editor .cantrip-task-markdown-content {
+  box-sizing: border-box;
   min-height: 100%;
-  padding: clamp(1.5rem, 3vw, 3rem) 0 8rem;
+  width: 100%;
+  padding: clamp(1.5rem, 3vw, 3rem) var(--task-editor-inset) 8rem;
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 0.9375rem;
   line-height: 1.75;
   overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.cantrip-task-markdown-content:not([contenteditable]) {
+  color: var(--muted-foreground);
 }
 
 .cantrip-task-markdown-content > :first-child {
@@ -164,7 +173,7 @@
 }
 
 @media (max-width: 640px) {
-  .cantrip-task-markdown-content {
+  .cantrip-task-markdown-editor .cantrip-task-markdown-content {
     padding-block: 1.25rem 7rem;
   }
 }
