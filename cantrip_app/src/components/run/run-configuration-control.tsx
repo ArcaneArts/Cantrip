@@ -475,14 +475,19 @@ export function RunConfigurationControl({
       ) : (
         <ListVideo className="size-4" />
       )}
-      <span className="truncate">
+      <span className={cn("truncate", compact && "max-[28rem]:sr-only")}>
         {selected?.name ??
           (selectedId?.startsWith("linux:")
             ? "Run configuration unavailable"
             : "Run Configurations")}
       </span>
       {selected?.catalog.binding ? (
-        <span className="truncate text-xs text-muted-foreground">
+        <span
+          className={cn(
+            "truncate text-xs text-muted-foreground",
+            compact && "max-[28rem]:sr-only",
+          )}
+        >
           CantripOS
         </span>
       ) : null}
