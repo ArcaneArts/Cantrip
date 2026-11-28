@@ -11,13 +11,12 @@ export function FileChangeSettings() {
   const [error, setError] = useState(false);
   return (
     <section className="grid gap-2">
-      <label className="flex cursor-pointer items-center justify-between gap-4 text-sm">
-        <span className="grid min-w-0 gap-2">
+      <label className="flex cursor-pointer items-center justify-between gap-4 border-y py-3 text-sm">
+        <span className="grid min-w-0 gap-1">
           <span id={labelId}>File change shimmer</span>
           <span id={descriptionId} className="text-xs text-muted-foreground">
-            Briefly highlight changed file names: green for added, yellow for
-            modified, and red for deleted. Hidden files highlight their nearest
-            visible folder. Saved on this device.
+            Highlight sidebar changes with green for added, yellow for modified,
+            and red for deleted. Hidden files highlight their folder.
           </span>
         </span>
         <input
