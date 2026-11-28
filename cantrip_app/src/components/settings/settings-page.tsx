@@ -659,7 +659,7 @@ function ConfigurablePreferenceControl({
 
   return (
     <label
-      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+      className="flex min-h-10 cursor-pointer flex-row-reverse items-center justify-between gap-4 py-2 text-sm hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
       title={title}
       onAuxClickCapture={preventPreferenceContextToggle}
       onClickCapture={(event) => {
@@ -1830,17 +1830,7 @@ export function SettingsPage({
                     "tab-display",
                     "file-change",
                   ) ? (
-                    <section className="grid gap-6 px-3 py-3">
-                      {matchesSetting("tab-display", "file-change") ? (
-                        <div className="grid gap-6">
-                          {matchesSetting("tab-display") ? (
-                            <TabDisplaySettings />
-                          ) : null}
-                          {matchesSetting("file-change") ? (
-                            <FileChangeSettings />
-                          ) : null}
-                        </div>
-                      ) : null}
+                    <section className="grid max-w-2xl gap-6 px-3 py-3">
                       <div
                         className={
                           matchesSetting(
@@ -1850,33 +1840,27 @@ export function SettingsPage({
                             "elite-mode",
                             "pro-mode",
                           )
-                            ? "flex flex-wrap items-center justify-between gap-2"
+                            ? "grid gap-2"
                             : "hidden"
                         }
                       >
                         {!searchResults ? (
                           <div className="flex min-w-0 items-center gap-2.5">
                             <Palette className="size-4 shrink-0 text-muted-foreground" />
-                            <div>
-                              <h2 className="text-sm font-semibold">
-                                Appearance
-                              </h2>
-                              <p className="text-xs text-muted-foreground">
-                                System follows the operating system.
-                              </p>
-                            </div>
+                            <h2 className="text-sm font-semibold">
+                              Theme and layout
+                            </h2>
                           </div>
                         ) : null}
-                        <div className="flex flex-wrap items-center justify-end gap-2">
+                        <div className="divide-y border-y">
                           {matchesSetting("appearance") ? (
-                            <label className="flex items-center gap-2 text-xs">
-                              <span className="text-muted-foreground">
-                                Brightness
-                              </span>
+                            <label className="flex min-h-10 items-center justify-between gap-4 py-2 text-sm">
+                              <span>Brightness</span>
                               <NativeSelect
                                 aria-label="Brightness"
-                                className="h-7"
+                                className="w-24"
                                 size="sm"
+                                title="System follows the operating system."
                                 value={
                                   settings.data?.preferences.theme ?? "system"
                                 }
@@ -1895,7 +1879,7 @@ export function SettingsPage({
                             </label>
                           ) : null}
                           {matchesSetting("high-contrast") ? (
-                            <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                            <label className="flex min-h-10 cursor-pointer flex-row-reverse items-center justify-between gap-4 py-2 text-sm hover:bg-muted/50">
                               <input
                                 type="checkbox"
                                 className="size-3.5 accent-primary"
@@ -1914,7 +1898,7 @@ export function SettingsPage({
                             </label>
                           ) : null}
                           {matchesSetting("content-gutters") ? (
-                            <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                            <label className="flex min-h-10 cursor-pointer flex-row-reverse items-center justify-between gap-4 py-2 text-sm hover:bg-muted/50">
                               <input
                                 aria-label="Content gutters"
                                 type="checkbox"
@@ -1930,7 +1914,7 @@ export function SettingsPage({
                                   })
                                 }
                               />
-                              Gutters
+                              Content gutters
                             </label>
                           ) : null}
                           {matchesSetting("elite-mode") ? (
@@ -1966,6 +1950,16 @@ export function SettingsPage({
                           ) : null}
                         </div>
                       </div>
+                      {matchesSetting("tab-display", "file-change") ? (
+                        <div className="grid gap-6">
+                          {matchesSetting("tab-display") ? (
+                            <TabDisplaySettings />
+                          ) : null}
+                          {matchesSetting("file-change") ? (
+                            <FileChangeSettings />
+                          ) : null}
+                        </div>
+                      ) : null}
                     </section>
                   ) : null}
 

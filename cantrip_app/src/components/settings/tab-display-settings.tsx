@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   saveTabDisplay,
   useTabDisplay,
@@ -16,13 +17,14 @@ function BarSetting({
   const value = useTabDisplay(bar);
   const [error, setError] = useState(false);
   return (
-    <div className="grid gap-2">
-      <label className="flex items-center justify-between gap-4 text-sm">
+    <div>
+      <label className="flex items-center justify-between gap-4 py-2 text-sm">
         {label}
-        <select
+        <NativeSelect
           aria-label={label}
           value={value}
-          className="rounded-md border bg-background px-2 py-1"
+          className="w-24"
+          size="sm"
           onChange={(event) => {
             try {
               saveTabDisplay(bar, event.target.value as TabDisplayMode);
@@ -35,7 +37,7 @@ function BarSetting({
           <option value="tabs">Tabs</option>
           <option value="icons">Icons</option>
           <option value="hybrid">Hybrid</option>
-        </select>
+        </NativeSelect>
       </label>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -47,14 +49,15 @@ function BarSetting({
 }
 export function TabDisplaySettings() {
   return (
-    <section className="grid gap-4">
+    <section className="grid gap-2">
       <h3 className="text-sm font-semibold">Tab bar display</h3>
-      <BarSetting bar="top" label="Top tab bar" />
-      <BarSetting bar="bottom" label="Bottom rail" />
+      <div className="divide-y border-y">
+        <BarSetting bar="top" label="Top tab bar" />
+        <BarSetting bar="bottom" label="Bottom rail" />
+      </div>
       <p className="text-xs text-muted-foreground">
-        Hybrid collapses trailing labels to icons as space runs out. The right
-        rail always uses icons. These display preferences are saved on this
-        device.
+        Hybrid switches trailing tabs to icons as space runs out. The right rail
+        always uses icons.
       </p>
     </section>
   );

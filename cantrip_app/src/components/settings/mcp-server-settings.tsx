@@ -632,7 +632,7 @@ export function McpServerSettings({
               <Badge variant="outline">Read only</Badge>
               <Badge variant="outline">IDE</Badge>
             </div>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
+            <p className="mt-1 text-xs break-anywhere text-muted-foreground">
               {codeGraphWorkerDetail}
             </p>
           </div>
@@ -708,10 +708,10 @@ export function McpServerSettings({
               worker.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <NativeSelect
               aria-label="Worker to scan for MCP servers"
-              className="min-w-44"
+              className="w-full min-w-0 sm:w-56"
               value={selectedScanWorkerId}
               disabled={scannableWorkers.length === 0 || discovery.isPending}
               onChange={(event) => setScanWorkerId(event.target.value)}
