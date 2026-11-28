@@ -9,6 +9,7 @@ import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   operateRunConfigurationRuntime,
   readRunConfigurationRuntimeOutput,
@@ -334,22 +335,25 @@ export function RunTerminalView({
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col bg-background"
+      className="@container/run-controls flex min-h-0 min-w-0 flex-1 flex-col bg-background"
       data-slot="run-terminal-view"
     >
-      <PanelToolbar aria-label="Run controls" className="min-h-11 gap-3">
+      <PanelToolbar
+        aria-label="Run controls"
+        className="min-h-11 @min-[28rem]/run-controls:gap-3"
+      >
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{terminal.title}</div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span
               className={cn(
-                "size-1.5 rounded-full",
+                "size-1.5 shrink-0 rounded-full",
                 runConfigurationRuntimeIsActive(runtime)
                   ? "bg-emerald-500"
                   : "bg-muted-foreground/50",
               )}
             />
-            <span className={cn(active && "capitalize")}>
+            <span className={cn("shrink-0", active && "capitalize")}>
               {active ? status : runRuntimeLastResult(runtime)}
             </span>
             <span aria-hidden="true">·</span>
@@ -357,7 +361,8 @@ export function RunTerminalView({
           </div>
         </div>
         {active ? (
-          <Button
+          <TooltipButton
+            aria-label="Restart"
             disabled={
               definitionAvailable !== true ||
               launchAvailable !== true ||
@@ -367,19 +372,21 @@ export function RunTerminalView({
             }
             onClick={() => lifecycle.mutate("restart")}
             size="sm"
-            title={
+            tooltip={
               launchProblem ??
               (launchAvailable === null
                 ? "Checking target availability…"
-                : undefined)
+                : "Restart")
             }
             variant="outline"
           >
             <RotateCw
               className={cn("size-3.5", lifecycle.isPending && "animate-spin")}
             />
-            Restart
-          </Button>
+            <span className="hidden @min-[28rem]/run-controls:inline">
+              Restart
+            </span>
+          </TooltipButton>
         ) : (
           <Button
             disabled={definitionAvailable !== true || launchAvailable !== true}
@@ -393,12 +400,21 @@ export function RunTerminalView({
           </Button>
         )}
         {onEdit ? (
-          <Button onClick={onEdit} size="sm" variant="ghost">
-            <Pencil className="size-3.5" /> Edit
-          </Button>
+          <TooltipButton
+            onClick={onEdit}
+            size="sm"
+            tooltip="Edit"
+            variant="ghost"
+          >
+            <Pencil className="size-3.5" />
+            <span className="hidden @min-[28rem]/run-controls:inline">
+              Edit
+            </span>
+          </TooltipButton>
         ) : null}
         {active ? (
-          <Button
+          <TooltipButton
+            aria-label="Stop"
             disabled={
               stopAvailable !== true ||
               (status === "stopping" && !runtime?.osDefinition) ||
@@ -406,11 +422,11 @@ export function RunTerminalView({
             }
             onClick={() => lifecycle.mutate("stop")}
             size="sm"
-            title={
+            tooltip={
               stopProblem ??
               (stopAvailable === null
                 ? "Checking target availability…"
-                : undefined)
+                : "Stop")
             }
             variant="destructive"
           >
@@ -419,8 +435,10 @@ export function RunTerminalView({
             ) : (
               <Square className="size-3.5 fill-current" />
             )}
-            Stop
-          </Button>
+            <span className="hidden @min-[28rem]/run-controls:inline">
+              Stop
+            </span>
+          </TooltipButton>
         ) : null}
       </PanelToolbar>
       {definitionMissing ? (
